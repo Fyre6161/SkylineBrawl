@@ -1,0 +1,8 @@
+{
+  "name": "Skyline Brawl",
+  "description": "A fast-paced 2D platform fighter inspired by Super Smash Bros. featuring damage-percentage knockback physics, directional recovery specials, and local or CPU battles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
