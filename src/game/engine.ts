@@ -18,6 +18,18 @@ import {
   createStageRuntime,
   stepStageRuntime,
 } from './hazards';
+import {
+  applyFighterState,
+  deserializeProjectiles,
+  NetEvent,
+  NetEventKind,
+  NetInputPayload,
+  NetInputTracker,
+  NetMatchStatePayload,
+  NetMessage,
+  serializeFighterState,
+  serializeProjectiles,
+} from './netcode';
 import { ParticlePool } from './particles';
 import { computeDynamicCamera, stepFighterPhysics } from './physics';
 import { BlastBeamEffect, renderArena } from './renderer';
@@ -39,7 +51,21 @@ export interface EngineCallbacks {
   onHudUpdate: (hud: MatchHudSnapshot) => void;
   onMatchEnd: (result: MatchResultSnapshot) => void;
   onScreenStateRequest?: (next: GameScreenState) => void;
+  onSendNetMessage?: (msg: NetMessage) => void;
 }
+
+const EMPTY_INPUT: FighterInputState = {
+  left: false,
+  right: false,
+  up: false,
+  down: false,
+  jumpJustPressed: false,
+  jumpHeld: false,
+  attackJustPressed: false,
+  specialJustPressed: false,
+  shieldHeld: false,
+  dodgeJustPressed: false,
+};
 
 export class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -76,6 +102,21 @@ export class GameEngine {
   private winnerSlot: 0 | 1 | null = null;
   private nextProjId = 1;
   private lastHudKey = '';
+
+  // Online P2P netcode state
+  private remoteInputTracker = new NetInputTracker();
+  private pendingNetEvents: NetEvent[] = [];
+  private nextNetEventSeq = 1;
+  private netStateSeq = 0;
+  private netSyncAccum = 0;
+  private lastRemoteStateSeq = 0;
+  private lastRemoteEventSeq = 0;
+  private guestJumpSeq = 0;
+  private guestAttackSeq = 0;
+  private guestSpecialSeq = 0;
+  private guestDodgeSeq = 0;
+  private lastSentInputKey = '';
+  private guestInputAccum = 0;
 
   private camX = 0;
   private camY = 0;
@@ -224,21 +265,26 @@ export class GameEngine {
     this.keysJustPressed.clear();
   }
 
+  private isPausedFreeze(): boolean {
+    return this.screenState === 'paused' && this.config.mode !== 'online';
+  }
+
   public setScreenState(next: GameScreenState): void {
     const prev = this.screenState;
+    const wasFrozen = prev === 'paused' && this.config.mode !== 'online';
     this.screenState = next;
     if (next === 'playing') {
       this.clearInputs();
       this.canvas.focus();
-      if (prev === 'paused') {
+      if (wasFrozen) {
         this.lastTime = performance.now();
         this.scheduleNextFrame(0);
       }
     } else {
       this.clearInputs();
-      if (next === 'paused') {
+      if (next === 'paused' && this.config.mode !== 'online') {
         this.renderFrame();
-      } else if (prev === 'paused') {
+      } else if (wasFrozen) {
         this.lastTime = performance.now();
         this.scheduleNextFrame(0);
       }
@@ -275,24 +321,200 @@ export class GameEngine {
     this.koBannerText = null;
     this.matchEndDelayTimer = -1;
     this.winnerSlot = null;
-    const wasPaused = this.screenState === 'paused';
+
+    this.remoteInputTracker.reset();
+    this.pendingNetEvents = [];
+    this.nextNetEventSeq = 1;
+    this.netStateSeq = 0;
+    this.netSyncAccum = 0;
+    this.lastRemoteStateSeq = 0;
+    this.lastRemoteEventSeq = 0;
+    this.guestJumpSeq = 0;
+    this.guestAttackSeq = 0;
+    this.guestSpecialSeq = 0;
+    this.guestDodgeSeq = 0;
+    this.lastSentInputKey = '';
+    this.guestInputAccum = 0;
+
+    const wasFrozen = this.screenState === 'paused' && this.config.mode !== 'online';
     this.clearInputs();
     this.screenState = 'playing';
     this.canvas.focus();
     this.lastHudKey = '';
     this.emitHudSnapshot();
-    if (wasPaused) {
+    if (wasFrozen) {
       this.lastTime = performance.now();
       this.scheduleNextFrame(0);
     }
   }
 
+  public pushRemoteInput(payload: NetInputPayload): void {
+    this.remoteInputTracker.pushRemote(payload);
+  }
+
+  public applyRemoteState(payload: NetMatchStatePayload): void {
+    if (this.config.mode !== 'online' || this.config.onlineRole !== 'guest') return;
+    if (payload.seq <= this.lastRemoteStateSeq) return;
+    this.lastRemoteStateSeq = payload.seq;
+
+    const prevCountdown = this.countdownTimer;
+    this.matchElapsed = payload.t;
+    this.countdownTimer = payload.cd;
+
+    if (this.countdownTimer > 0) {
+      const sec = Math.ceil(this.countdownTimer * 2);
+      if (sec !== this.lastCountdownInt && sec > 0) {
+        this.lastCountdownInt = sec;
+        this.audio.playCountdown(false);
+      }
+    } else if (prevCountdown > 0 && this.countdownTimer === 0) {
+      this.audio.playCountdown(true);
+    }
+
+    if (payload.banner && payload.banner !== this.koBannerText) {
+      this.koBannerTimer = 0.85;
+    } else if (!payload.banner && this.koBannerTimer <= 0) {
+      this.koBannerText = null;
+    }
+    if (payload.banner) {
+      this.koBannerText = payload.banner;
+    }
+    this.winnerSlot = payload.win;
+
+    applyFighterState(this.fighters[0], payload.f[0]);
+    applyFighterState(this.fighters[1], payload.f[1]);
+    this.projectiles = deserializeProjectiles(payload.p);
+    stepStageRuntime(this.stageRuntime, this.matchElapsed, {
+      hazardsEnabled: this.countdownTimer <= 0,
+    });
+
+    for (const ev of payload.ev) {
+      if (ev.seq <= this.lastRemoteEventSeq) continue;
+      this.lastRemoteEventSeq = ev.seq;
+      this.replayNetEvent(ev);
+    }
+
+    this.emitHudSnapshot();
+  }
+
+  public applyRemoteMatchEnd(result: MatchResultSnapshot): void {
+    this.winnerSlot = result.winnerSlot;
+    this.audio.playVictory();
+    this.emitHudSnapshot();
+    this.callbacks.onMatchEnd(result);
+  }
+
+  private queueNetEvent(
+    kind: NetEventKind,
+    x: number,
+    y: number,
+    extra?: Omit<NetEvent, 'seq' | 'kind' | 'x' | 'y'>
+  ): void {
+    if (this.config.mode !== 'online' || this.config.onlineRole !== 'host') return;
+    this.pendingNetEvents.push({
+      seq: this.nextNetEventSeq++,
+      kind,
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      ...extra,
+    });
+  }
+
+  private replayNetEvent(ev: NetEvent): void {
+    switch (ev.kind) {
+      case 'jump':
+        this.audio.playJump(false);
+        this.particles.spawnDust(ev.x, ev.y, -(ev.dir ?? 1), 4);
+        break;
+      case 'doubleJump':
+        this.audio.playJump(true);
+        this.particles.spawnRing(ev.x, ev.y, ev.color ?? '#93C5FD', 8, 130);
+        break;
+      case 'land':
+        this.audio.playLand();
+        this.particles.spawnDust(ev.x, ev.y, 0, 5);
+        break;
+      case 'dodge':
+        this.particles.spawnRing(ev.x, ev.y, '#E2E8F0', 10, 140);
+        break;
+      case 'ledgeGrab':
+        this.audio.playLedgeGrab();
+        this.particles.spawnRing(ev.x, ev.y, ev.color ?? '#FBBF24', 9, 130);
+        this.particles.spawnBurst(ev.x, ev.y, 6, 180, ev.color ?? '#FBBF24', 'spark');
+        break;
+      case 'swing':
+        this.audio.playSwing(Boolean(ev.heavy));
+        break;
+      case 'hit':
+        this.audio.playHit(Boolean(ev.heavy), ev.dir ?? 20);
+        this.particles.spawnBurst(
+          ev.x,
+          ev.y,
+          ev.heavy ? 18 : 9,
+          ev.heavy ? 480 : 280,
+          ev.heavy ? '#FDE047' : '#F8FAFC',
+          ev.heavy ? 'star' : 'spark'
+        );
+        this.particles.spawnRing(
+          ev.x,
+          ev.y,
+          ev.heavy ? '#FB923C' : '#F8FAFC',
+          10,
+          ev.heavy ? 260 : 140
+        );
+        this.trauma = Math.min(1, this.trauma + (ev.heavy ? 0.45 : 0.2));
+        break;
+      case 'shieldBlock':
+        this.audio.playShieldBlock(Boolean(ev.flag));
+        this.particles.spawnRing(ev.x, ev.y, ev.flag ? '#FACC15' : '#93C5FD', 12, 180);
+        if (ev.flag) {
+          this.trauma = Math.min(1, this.trauma + 0.55);
+        }
+        break;
+      case 'ko':
+        this.blastBeams.push({
+          x: ev.x,
+          y: ev.y,
+          angle: ev.angle ?? 0,
+          color: ev.color ?? '#F8FAFC',
+          life: 0,
+          maxLife: 0.55,
+        });
+        this.particles.spawnBurst(ev.x, ev.y, 26, 620, ev.color ?? '#FBBF24', 'star');
+        this.audio.playBlastKo();
+        this.trauma = 0.85;
+        break;
+      case 'hazardTelegraph':
+        this.audio.playHazardTelegraph();
+        break;
+      case 'hazardErupt': {
+        const isWind = Boolean(ev.flag);
+        this.audio.playHazardErupt(isWind);
+        this.particles.spawnBurst(
+          ev.x,
+          ev.y,
+          14,
+          360,
+          isWind ? '#67E8F9' : '#FEF08A',
+          isWind ? 'spark' : 'star'
+        );
+        if (!isWind) {
+          this.trauma = Math.min(1, this.trauma + 0.28);
+        }
+        break;
+      }
+    }
+  }
+
   private readPlayerInput(slot: 0 | 1): FighterInputState {
+    if (this.screenState === 'paused') {
+      return { ...EMPTY_INPUT };
+    }
     const held = (codes: string[]) => codes.some((c) => this.keysHeld.has(c));
     const just = (codes: string[]) => codes.some((c) => this.keysJustPressed.has(c));
 
-    if (this.config.mode === 'cpu') {
-      // In 1P vs CPU mode, support BOTH WASD+J/K/L and Arrows+Z/X/C seamlessly
+    if (this.config.mode === 'cpu' || this.config.mode === 'online') {
+      // In 1P vs CPU and Online 1v1, each player uses the full comfortable control layout locally
       return {
         left: held(['KeyA', 'ArrowLeft']),
         right: held(['KeyD', 'ArrowRight']),
@@ -339,10 +561,10 @@ export class GameEngine {
 
   private scheduleNextFrame(renderMs: number): void {
     if (this.destroyed) return;
-    if (this.screenState === 'paused') return;
+    if (this.isPausedFreeze()) return;
     if (renderMs > 10) {
       this.paceTimerId = window.setTimeout(() => {
-        if (!this.destroyed && this.screenState !== 'paused') {
+        if (!this.destroyed && !this.isPausedFreeze()) {
           this.rafId = requestAnimationFrame(this.loop);
         }
       }, 32);
@@ -353,7 +575,7 @@ export class GameEngine {
 
   private loop = (now: number): void => {
     if (this.destroyed) return;
-    if (this.screenState === 'paused') return;
+    if (this.isPausedFreeze()) return;
     const frameStart = performance.now();
     const rawDt = (now - this.lastTime) / 1000;
     this.lastTime = now;
@@ -363,7 +585,10 @@ export class GameEngine {
 
     if (this.screenState === 'title') {
       this.stepTitlePreview(dt);
-    } else if (this.screenState === 'playing') {
+    } else if (
+      this.screenState === 'playing' ||
+      (this.screenState === 'paused' && this.config.mode === 'online')
+    ) {
       this.stepPlaying(dt);
     }
 
@@ -384,7 +609,96 @@ export class GameEngine {
     this.particles.update(dt);
   }
 
+  private stepGuestPlaying(dt: number): void {
+    this.trauma = Math.max(0, this.trauma - 1.9 * dt);
+    this.particles.update(dt);
+    for (let i = this.blastBeams.length - 1; i >= 0; i--) {
+      this.blastBeams[i].life += dt;
+      if (this.blastBeams[i].life >= this.blastBeams[i].maxLife) {
+        this.blastBeams.splice(i, 1);
+      }
+    }
+    if (this.koBannerTimer > 0) {
+      this.koBannerTimer = Math.max(0, this.koBannerTimer - dt);
+      if (this.koBannerTimer === 0) this.koBannerText = null;
+    }
+
+    // Send local guest input state reliably whenever changed or at 30Hz heartbeat
+    const input = this.readPlayerInput(1);
+    if (input.jumpJustPressed) this.guestJumpSeq += 1;
+    if (input.attackJustPressed) this.guestAttackSeq += 1;
+    if (input.specialJustPressed) this.guestSpecialSeq += 1;
+    if (input.dodgeJustPressed) this.guestDodgeSeq += 1;
+
+    const payload: NetInputPayload = {
+      left: input.left,
+      right: input.right,
+      up: input.up,
+      down: input.down,
+      jumpHeld: input.jumpHeld,
+      shieldHeld: input.shieldHeld,
+      jumpSeq: this.guestJumpSeq,
+      attackSeq: this.guestAttackSeq,
+      specialSeq: this.guestSpecialSeq,
+      dodgeSeq: this.guestDodgeSeq,
+    };
+
+    const inputKey = `${payload.left ? 1 : 0}${payload.right ? 1 : 0}${payload.up ? 1 : 0}${payload.down ? 1 : 0}${payload.jumpHeld ? 1 : 0}${payload.shieldHeld ? 1 : 0}:${payload.jumpSeq}:${payload.attackSeq}:${payload.specialSeq}:${payload.dodgeSeq}`;
+    this.guestInputAccum += dt;
+    if (inputKey !== this.lastSentInputKey || this.guestInputAccum >= 0.033) {
+      this.lastSentInputKey = inputKey;
+      this.guestInputAccum = 0;
+      this.callbacks.onSendNetMessage?.({ type: 'input', payload });
+    }
+
+    // Smooth visual interpolation between authoritative host snapshots
+    if (this.countdownTimer <= 0) {
+      this.matchElapsed += dt;
+      stepStageRuntime(this.stageRuntime, this.matchElapsed, { hazardsEnabled: true });
+      for (const f of this.fighters) {
+        if (f.stocks <= 0 || f.respawnTimer > 0 || f.ledgeGrab) continue;
+        f.x += f.vx * dt * 0.55;
+        f.y += f.vy * dt * 0.55;
+      }
+      for (const p of this.projectiles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+      }
+    } else {
+      stepStageRuntime(this.stageRuntime, this.matchElapsed, { hazardsEnabled: false });
+    }
+
+    this.updateCamera(dt);
+    this.emitHudSnapshot();
+  }
+
+  private broadcastHostState(force = false): void {
+    if (this.config.mode !== 'online' || this.config.onlineRole !== 'host') return;
+    if (!force && this.netSyncAccum < 1 / 30 && this.pendingNetEvents.length === 0) return;
+    this.netSyncAccum = 0;
+    const ev = this.pendingNetEvents;
+    this.pendingNetEvents = [];
+    this.callbacks.onSendNetMessage?.({
+      type: 'state',
+      payload: {
+        seq: ++this.netStateSeq,
+        t: Math.round(this.matchElapsed * 1000) / 1000,
+        cd: Math.round(this.countdownTimer * 1000) / 1000,
+        banner: this.koBannerText,
+        win: this.winnerSlot,
+        f: [serializeFighterState(this.fighters[0]), serializeFighterState(this.fighters[1])],
+        p: serializeProjectiles(this.projectiles),
+        ev,
+      },
+    });
+  }
+
   private stepPlaying(dt: number): void {
+    if (this.config.mode === 'online' && this.config.onlineRole === 'guest') {
+      this.stepGuestPlaying(dt);
+      return;
+    }
+
     // Trauma decay & particle visual updates always tick in real dt even during hitstop
     this.trauma = Math.max(0, this.trauma - 1.9 * dt);
     this.particles.update(dt);
@@ -399,6 +713,8 @@ export class GameEngine {
       this.koBannerTimer = Math.max(0, this.koBannerTimer - dt);
       if (this.koBannerTimer === 0) this.koBannerText = null;
     }
+
+    this.netSyncAccum += dt;
 
     // Countdown before match starts
     if (this.countdownTimer > 0) {
@@ -415,6 +731,7 @@ export class GameEngine {
       }
       this.updateCamera(dt);
       this.emitHudSnapshot();
+      this.broadcastHostState(this.countdownTimer === 0);
       return;
     }
 
@@ -431,6 +748,7 @@ export class GameEngine {
     if (this.hitstopTimer > 0) {
       this.hitstopTimer = Math.max(0, this.hitstopTimer - dt);
       this.updateCamera(dt);
+      this.broadcastHostState();
       return;
     }
 
@@ -442,14 +760,16 @@ export class GameEngine {
     });
     if (stageEvents.telegraphStarted) {
       this.audio.playHazardTelegraph();
+      this.queueNetEvent('hazardTelegraph', 0, 0);
     }
     if (stageEvents.erupted && this.stageRuntime.hazard) {
       const haz = this.stageRuntime.hazard;
       const isWind = haz.spec.kind === 'storm_updraft';
+      const eruptY = isWind ? 80 : haz.spec.yBottom - 16;
       this.audio.playHazardErupt(isWind);
       this.particles.spawnBurst(
         haz.x,
-        isWind ? 80 : haz.spec.yBottom - 16,
+        eruptY,
         14,
         360,
         isWind ? '#67E8F9' : '#FEF08A',
@@ -458,6 +778,7 @@ export class GameEngine {
       if (!isWind) {
         this.trauma = Math.min(1, this.trauma + 0.28);
       }
+      this.queueNetEvent('hazardErupt', haz.x, eruptY, { flag: isWind });
     }
     for (const collapsed of stageEvents.collapsedPlatforms) {
       this.particles.spawnDust(collapsed.baseX + collapsed.baseWidth * 0.5, collapsed.baseY, 0, 8);
@@ -486,7 +807,9 @@ export class GameEngine {
             this.stageRuntime.platforms,
             this.stageRuntime.hazard
           )
-        : this.readPlayerInput(1),
+        : this.config.mode === 'online'
+          ? this.remoteInputTracker.consumeFrameInput()
+          : this.readPlayerInput(1),
     ];
 
     for (let i = 0; i < 2; i++) {
@@ -497,26 +820,33 @@ export class GameEngine {
       if (ev.jumped) {
         this.audio.playJump(false);
         this.particles.spawnDust(f.x, f.y, -f.facing, 4);
+        this.queueNetEvent('jump', f.x, f.y, { dir: f.facing });
       }
       if (ev.doubleJumped) {
         this.audio.playJump(true);
         this.particles.spawnRing(f.x, f.y, f.spec.accentColor, 8, 130);
+        this.queueNetEvent('doubleJump', f.x, f.y, { color: f.spec.accentColor });
       }
       if (ev.landed) {
         this.audio.playLand();
         this.particles.spawnDust(f.x, f.y, 0, 5);
+        this.queueNetEvent('land', f.x, f.y);
       }
       if (ev.dodged) {
-        this.particles.spawnRing(f.x, f.y - f.spec.height * 0.5, '#E2E8F0', 10, 140);
+        const dy = f.y - f.spec.height * 0.5;
+        this.particles.spawnRing(f.x, dy, '#E2E8F0', 10, 140);
+        this.queueNetEvent('dodge', f.x, dy);
       }
       if (ev.grabbedLedge) {
         this.audio.playLedgeGrab();
         this.particles.spawnRing(ev.grabbedLedge.x, ev.grabbedLedge.y, f.spec.accentColor, 9, 130);
         this.particles.spawnBurst(ev.grabbedLedge.x, ev.grabbedLedge.y, 6, 180, f.spec.accentColor, 'spark');
+        this.queueNetEvent('ledgeGrab', ev.grabbedLedge.x, ev.grabbedLedge.y, { color: f.spec.accentColor });
       }
       if (ev.startedAttack) {
         const heavy = ev.startedAttack.includes('Special') || ev.startedAttack === 'sideTilt';
         this.audio.playSwing(heavy);
+        this.queueNetEvent('swing', f.x, f.y, { heavy });
       }
       if (ev.spawnedProjectile && f.attack) {
         const spec = f.attack.spec;
@@ -590,8 +920,10 @@ export class GameEngine {
     for (const f of this.fighters) {
       if (f.stocks <= 0) continue;
       if (tryReflectProjectiles(f, this.projectiles) > 0) {
+        const ry = f.y - f.spec.height * 0.5;
         this.audio.playShieldBlock(false);
-        this.particles.spawnRing(f.x, f.y - f.spec.height * 0.5, '#67E8F9', 16, 220);
+        this.particles.spawnRing(f.x, ry, '#67E8F9', 16, 220);
+        this.queueNetEvent('shieldBlock', f.x, ry, { flag: false });
       }
     }
 
@@ -637,6 +969,7 @@ export class GameEngine {
 
     this.updateCamera(dt);
     this.emitHudSnapshot();
+    this.broadcastHostState();
   }
 
   private resolveMeleePair(attacker: FighterRuntime, defender: FighterRuntime): void {
@@ -688,8 +1021,10 @@ export class GameEngine {
         this.koBannerText = 'SHIELD BREAK!';
         this.koBannerTimer = 1.0;
       }
+      this.queueNetEvent('shieldBlock', res.impactX, res.impactY, { flag: res.shieldBroken });
     } else {
-      this.audio.playHit(heavy, res.knockbackMagnitude * 0.15);
+      const pitchMag = Math.round(res.knockbackMagnitude * 0.15);
+      this.audio.playHit(heavy, pitchMag);
       this.particles.spawnBurst(
         res.impactX,
         res.impactY,
@@ -707,6 +1042,7 @@ export class GameEngine {
       );
       this.hitstopTimer = Math.max(this.hitstopTimer, res.hitstop);
       this.trauma = Math.min(1, this.trauma + (heavy ? 0.45 : 0.2));
+      this.queueNetEvent('hit', res.impactX, res.impactY, { heavy, dir: pitchMag });
     }
     this.emitHudSnapshot();
   }
@@ -748,6 +1084,10 @@ export class GameEngine {
     this.audio.playBlastKo();
     this.trauma = 0.85;
     this.hitstopTimer = 0.08;
+    this.queueNetEvent('ko', bx, by, {
+      angle: Math.round(angle * 100) / 100,
+      color: victim.spec.accentColor,
+    });
 
     if (victim.stocks > 0) {
       respawnFighter(victim, this.stage);
@@ -760,6 +1100,7 @@ export class GameEngine {
       this.matchEndDelayTimer = 0.65;
     }
     this.emitHudSnapshot();
+    this.broadcastHostState(true);
   }
 
   private finalizeMatch(winnerSlot: 0 | 1): void {
@@ -768,8 +1109,7 @@ export class GameEngine {
     const winner = this.fighters[winnerSlot];
     const loser = this.fighters[winnerSlot === 0 ? 1 : 0];
 
-    this.emitHudSnapshot();
-    this.callbacks.onMatchEnd({
+    const result: MatchResultSnapshot = {
       winnerSlot,
       winnerName: winner.slot === 0 ? `P1 · ${winner.spec.name}` : `${winner.isCpu ? 'CPU' : 'P2'} · ${winner.spec.name}`,
       loserName: loser.slot === 0 ? `P1 · ${loser.spec.name}` : `${loser.isCpu ? 'CPU' : 'P2'} · ${loser.spec.name}`,
@@ -792,7 +1132,15 @@ export class GameEngine {
         damageDealt: Math.round(f2.damageDealt),
         peakDamage: Math.round(f2.peakDamage),
       },
-    });
+    };
+
+    this.broadcastHostState(true);
+    if (this.config.mode === 'online' && this.config.onlineRole === 'host') {
+      this.callbacks.onSendNetMessage?.({ type: 'match_end', result });
+    }
+
+    this.emitHudSnapshot();
+    this.callbacks.onMatchEnd(result);
   }
 
   private updateCamera(dt: number): void {
@@ -833,11 +1181,17 @@ export class GameEngine {
   }
 
   private toHudFighter(f: FighterRuntime): FighterHudSnapshot {
+    const isLocalControl =
+      this.config.mode === 'online'
+        ? f.slot === (this.config.onlineRole === 'guest' ? 1 : 0)
+        : undefined;
+
     return {
       slot: f.slot,
       id: f.spec.id,
       name: f.spec.name,
       isCpu: f.isCpu,
+      isLocalControl,
       damage: Math.round(f.damage),
       stocks: f.stocks,
       maxStocks: this.config.stocks,
@@ -860,7 +1214,7 @@ export class GameEngine {
     const elapsedSeconds = Math.floor(this.matchElapsed);
     const s1 = Math.round(f1.shieldRatio * 20);
     const s2 = Math.round(f2.shieldRatio * 20);
-    const hudKey = `${f1.id}:${f1.damage}:${f1.stocks}:${s1}|${f2.id}:${f2.damage}:${f2.stocks}:${s2}|${elapsedSeconds}|${countdownText ?? ''}|${this.koBannerText ?? ''}|${this.winnerSlot ?? ''}`;
+    const hudKey = `${f1.id}:${f1.damage}:${f1.stocks}:${s1}:${f1.isLocalControl ?? ''}|${f2.id}:${f2.damage}:${f2.stocks}:${s2}:${f2.isLocalControl ?? ''}|${elapsedSeconds}|${countdownText ?? ''}|${this.koBannerText ?? ''}|${this.winnerSlot ?? ''}`;
     if (hudKey === this.lastHudKey) return;
     this.lastHudKey = hudKey;
 

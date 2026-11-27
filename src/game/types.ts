@@ -2,7 +2,16 @@ export type GameScreenState = 'title' | 'playing' | 'paused' | 'gameover';
 
 export type FighterId = 'blaze' | 'gale' | 'titan';
 export type StageId = 'sky_temple' | 'twin_pillars';
-export type GameMode = 'cpu' | 'local';
+export type GameMode = 'cpu' | 'local' | 'online';
+export type OnlineRole = 'host' | 'guest';
+export type OnlineConnectionStatus =
+  | 'idle'
+  | 'creating'
+  | 'waiting'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'error';
 export type CpuDifficulty = 'chill' | 'standard' | 'fierce';
 export type ProjectileVisual = 'fireball' | 'windblade' | 'boulder';
 
@@ -256,6 +265,7 @@ export interface MatchConfig {
   stage: StageId;
   stocks: number;
   difficulty: CpuDifficulty;
+  onlineRole?: OnlineRole;
 }
 
 export interface FighterHudSnapshot {
@@ -263,6 +273,7 @@ export interface FighterHudSnapshot {
   id: FighterId;
   name: string;
   isCpu: boolean;
+  isLocalControl?: boolean;
   damage: number;
   stocks: number;
   maxStocks: number;

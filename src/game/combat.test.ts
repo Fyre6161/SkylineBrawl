@@ -460,5 +460,154 @@ test('knockback stays controlled at 0%, scales to KO strength at 120%, and caps 
   assert.ok(extremeCap <= 1650, `Extreme knockback (${extremeCap}) must remain capped`);
 });
 
+import {
+  applyFighterState,
+  buildRoomInviteUrl,
+  deserializeProjectiles,
+  generateRoomCode,
+  isValidRoomCode,
+  NetInputTracker,
+  normalizeRoomCode,
+  parseRoomFromSearch,
+  roomCodeToPeerId,
+  serializeFighterState,
+  serializeProjectiles,
+} from './netcode';
 
+test('room code normalization, validation, peer IDs, and invite URL roundtrip', () => {
+  const generated = generateRoomCode(6);
+  assert.equal(generated.length, 6);
+  assert.equal(isValidRoomCode(generated), true);
 
+  assert.equal(normalizeRoomCode(' ab-94z! '), 'AB94Z');
+  assert.equal(isValidRoomCode('abc'), false);
+  assert.equal(isValidRoomCode('AB94Z'), true);
+  assert.equal(roomCodeToPeerId('ab94z'), 'skyline-brawl-AB94Z');
+
+  const invite = buildRoomInviteUrl('https://user.github.io/skyline-brawl/?autostart=1', 'ab94z');
+  assert.equal(invite, 'https://user.github.io/skyline-brawl/?room=AB94Z');
+
+  const parsed = parseRoomFromSearch(new URL(invite).search);
+  assert.equal(parsed, 'AB94Z');
+  assert.equal(parseRoomFromSearch('?room=xx'), null);
+});
+
+test('NetInputTracker triggers sequenced taps once without double-firing or dropping', () => {
+  const tracker = new NetInputTracker();
+
+  tracker.pushRemote({
+    left: true,
+    right: false,
+    up: false,
+    down: false,
+    jumpHeld: true,
+    shieldHeld: false,
+    jumpSeq: 1,
+    attackSeq: 1,
+    specialSeq: 0,
+    dodgeSeq: 0,
+  });
+
+  const frame1 = tracker.consumeFrameInput();
+  assert.equal(frame1.left, true);
+  assert.equal(frame1.jumpHeld, true);
+  assert.equal(frame1.jumpJustPressed, true);
+  assert.equal(frame1.attackJustPressed, true);
+  assert.equal(frame1.specialJustPressed, false);
+
+  // Consuming again without a newer packet must keep held keys but NOT re-fire edge taps
+  const frame2 = tracker.consumeFrameInput();
+  assert.equal(frame2.left, true);
+  assert.equal(frame2.jumpHeld, true);
+  assert.equal(frame2.jumpJustPressed, false);
+  assert.equal(frame2.attackJustPressed, false);
+
+  // Advancing specialSeq triggers only specialJustPressed
+  tracker.pushRemote({
+    left: false,
+    right: true,
+    up: true,
+    down: false,
+    jumpHeld: false,
+    shieldHeld: true,
+    jumpSeq: 1,
+    attackSeq: 1,
+    specialSeq: 1,
+    dodgeSeq: 1,
+  });
+
+  const frame3 = tracker.consumeFrameInput();
+  assert.equal(frame3.right, true);
+  assert.equal(frame3.shieldHeld, true);
+  assert.equal(frame3.jumpJustPressed, false);
+  assert.equal(frame3.attackJustPressed, false);
+  assert.equal(frame3.specialJustPressed, true);
+  assert.equal(frame3.dodgeJustPressed, true);
+});
+
+test('fighter and projectile net serialization roundtrips accurately', () => {
+  const stage = STAGES.sky_temple;
+  const source = createFighterRuntime(0, FIGHTERS.blaze, false, stage, 3);
+  source.x = 142.36;
+  source.y = -48.12;
+  source.vx = 285.44;
+  source.vy = -410.67;
+  source.facing = -1;
+  source.damage = 87.6;
+  source.stocks = 2;
+  source.attack = {
+    kind: 'upSpecial',
+    elapsed: 0.14,
+    hasHit: false,
+    spec: FIGHTERS.blaze.attacks.upSpecial,
+  };
+  source.ledgeGrab = {
+    platformId: 'main_deck',
+    side: -1,
+    ledgeX: -360,
+    ledgeY: 120,
+    timer: 0.3,
+  };
+
+  const snap = serializeFighterState(source);
+  const target = createFighterRuntime(0, FIGHTERS.titan, false, stage, 3);
+  applyFighterState(target, snap);
+
+  assert.equal(target.spec.id, 'blaze');
+  assert.equal(target.x, 142.4);
+  assert.equal(target.y, -48.1);
+  assert.equal(target.facing, -1);
+  assert.equal(target.damage, 88);
+  assert.equal(target.stocks, 2);
+  assert.equal(target.attack?.kind, 'upSpecial');
+  assert.equal(target.attack?.elapsed, 0.14);
+  assert.equal(target.ledgeGrab?.platformId, 'main_deck');
+
+  const projs: ProjectileRuntime[] = [
+    {
+      id: 7,
+      ownerSlot: 0,
+      visual: 'fireball',
+      x: 55.25,
+      y: 80.75,
+      vx: 520,
+      vy: -12,
+      gravity: 0,
+      radius: 13,
+      damage: 9,
+      baseKnockback: 180,
+      knockbackGrowth: 2.5,
+      angleDeg: 35,
+      color: '#FDBA74',
+      life: 0.2,
+      maxLife: 1.6,
+    },
+  ];
+
+  const deserialized = deserializeProjectiles(serializeProjectiles(projs));
+  assert.equal(deserialized.length, 1);
+  assert.equal(deserialized[0].id, 7);
+  assert.equal(deserialized[0].visual, 'fireball');
+  assert.equal(deserialized[0].x, 55.3);
+  assert.equal(deserialized[0].y, 80.8);
+});

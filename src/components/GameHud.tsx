@@ -4,6 +4,7 @@ import { FighterEmblem } from './FighterEmblem';
 interface GameHudProps {
   hud: MatchHudSnapshot;
   muted: boolean;
+  isOnline?: boolean;
   onToggleMute: () => void;
   onPause: () => void;
   onRestart: () => void;
@@ -17,7 +18,14 @@ function getDamageColor(damage: number): string {
 
 function FighterCard({ fighter }: { fighter: FighterHudSnapshot }) {
   const isP1 = fighter.slot === 0;
-  const tagLabel = isP1 ? 'P1' : fighter.isCpu ? 'CPU' : 'P2';
+  const tagLabel =
+    fighter.isLocalControl === true
+      ? 'YOU'
+      : isP1
+        ? 'P1'
+        : fighter.isCpu
+          ? 'CPU'
+          : 'P2';
   const accentBorder = isP1 ? 'border-red-500/75' : 'border-blue-500/75';
   const tagBg = isP1 ? 'bg-red-600' : 'bg-blue-600';
 
@@ -75,6 +83,7 @@ function FighterCard({ fighter }: { fighter: FighterHudSnapshot }) {
 export function GameHud({
   hud,
   muted,
+  isOnline = false,
   onToggleMute,
   onPause,
   onRestart,
@@ -120,22 +129,24 @@ export function GameHud({
             </svg>
           </button>
 
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Restart match (R)"
-            title="Restart (R)"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onRestart();
-            }}
-            className="w-10 h-10 rounded-lg bg-slate-950/90 hover:bg-slate-800 border border-slate-700 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-              <path d="M3 3v5h5" />
-            </svg>
-          </button>
+          {!isOnline && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="Restart match (R)"
+              title="Restart (R)"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onRestart();
+              }}
+              className="w-10 h-10 rounded-lg bg-slate-950/90 hover:bg-slate-800 border border-slate-700 text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </button>
+          )}
 
           <button
             type="button"
