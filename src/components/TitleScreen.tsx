@@ -9,6 +9,7 @@ import {
   rebindHotkey,
   RebindTarget,
 } from '../game/hotkeys';
+import { QuickMatchStatus } from '../game/matchmaking';
 import { buildRoomInviteUrl, isValidRoomCode, normalizeRoomCode } from '../game/netcode';
 import { STAGE_LIST, STAGES } from '../game/stages';
 import {
@@ -23,7 +24,7 @@ import {
 import { FighterEmblem } from './FighterEmblem';
 
 export type MenuView = 'main' | 'setup' | 'online';
-export type OnlineTab = 'host' | 'join';
+export type OnlineTab = 'quick' | 'host' | 'join';
 export type SetupTab = 'match' | 'hotkeys';
 
 export interface OnlineLobbyState {
@@ -43,12 +44,19 @@ interface TitleScreenProps {
   onlineTab: OnlineTab;
   joinCode: string;
   onlineState: OnlineLobbyState;
+  quickFighter: FighterId;
+  quickMatchStatus: QuickMatchStatus;
+  quickMatchError: string | null;
   onChangeMenuView: (view: MenuView) => void;
   onChangeOnlineTab: (tab: OnlineTab) => void;
   onChangeJoinCode: (code: string) => void;
   onChangeConfig: (next: MatchConfig) => void;
   onChangeHotkeys: (next: HotkeySettings) => void;
+  onChangeQuickFighter: (fighter: FighterId) => void;
   onStartMatch: (overrideConfig?: MatchConfig) => void;
+  onQuickPlayOnline: () => void;
+  onStartQuickMatch: (overrideFighter?: FighterId) => void;
+  onCancelQuickMatch: () => void;
   onHostOnline: () => void;
   onJoinOnline: (code: string) => void;
   onLeaveOnline: () => void;
@@ -56,7 +64,27 @@ interface TitleScreenProps {
   onStartOnlineMatch: () => void;
 }
 
-function getStatusText(online: OnlineLobbyState): string {
+function getStatusText(
+  online: OnlineLobbyState,
+  onlineTab: OnlineTab,
+  quickMatchStatus: QuickMatchStatus,
+  quickMatchError: string | null
+): string {
+  if (onlineTab === 'quick' && online.status !== 'connected') {
+    if (quickMatchStatus === 'searching') {
+      return 'Searching for opponent...';
+    }
+    if (quickMatchStatus === 'matched') {
+      return online.roomCode
+        ? `Match found! Connecting to room ${online.roomCode}...`
+        : 'Match found! Connecting...';
+    }
+    if (quickMatchStatus === 'error') {
+      return quickMatchError || online.error || 'Matchmaking error.';
+    }
+    return 'Pick a fighter and search for an opponent.';
+  }
+
   switch (online.status) {
     case 'creating':
       return 'Opening room...';
@@ -92,12 +120,19 @@ export function TitleScreen({
   onlineTab,
   joinCode,
   onlineState,
+  quickFighter,
+  quickMatchStatus,
+  quickMatchError,
   onChangeMenuView,
   onChangeOnlineTab,
   onChangeJoinCode,
   onChangeConfig,
   onChangeHotkeys,
+  onChangeQuickFighter,
   onStartMatch,
+  onQuickPlayOnline,
+  onStartQuickMatch,
+  onCancelQuickMatch,
   onHostOnline,
   onJoinOnline,
   onLeaveOnline,
@@ -262,7 +297,7 @@ export function TitleScreen({
 
           <nav
             aria-label="Main menu"
-            className="pointer-events-auto flex flex-col w-full max-w-[260px] gap-2.5"
+            className="pointer-events-auto flex flex-col w-full max-w-[270px] gap-2"
           >
             <button
               type="button"
@@ -271,7 +306,7 @@ export function TitleScreen({
                 e.currentTarget.blur();
                 quickPlay('cpu');
               }}
-              className="w-full py-3 px-6 rounded-lg bg-amber-500 hover:bg-amber-400 active:translate-y-0.5 text-slate-950 font-display text-2xl font-extrabold uppercase tracking-wide shadow-[0_5px_0_#92400E] transition-colors cursor-pointer whitespace-nowrap"
+              className="w-full py-2.5 px-6 rounded-lg bg-amber-500 hover:bg-amber-400 active:translate-y-0.5 text-slate-950 font-display text-2xl font-extrabold uppercase tracking-wide shadow-[0_5px_0_#92400E] transition-colors cursor-pointer whitespace-nowrap"
             >
               Play vs CPU
             </button>
@@ -280,9 +315,20 @@ export function TitleScreen({
               type="button"
               onClick={(e) => {
                 e.currentTarget.blur();
+                onQuickPlayOnline();
+              }}
+              className="w-full py-2.5 px-6 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:translate-y-0.5 text-slate-950 font-display text-xl font-extrabold uppercase tracking-wide shadow-[0_4px_0_#065F46] transition-colors cursor-pointer whitespace-nowrap"
+            >
+              Quick Play Online
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.currentTarget.blur();
                 quickPlay('local');
               }}
-              className="w-full py-2.5 px-6 rounded-lg bg-slate-900/92 hover:bg-slate-800 text-slate-100 font-display text-xl font-bold uppercase tracking-wide border border-slate-700 transition-colors cursor-pointer whitespace-nowrap"
+              className="w-full py-2 px-6 rounded-lg bg-slate-900/92 hover:bg-slate-800 text-slate-100 font-display text-xl font-bold uppercase tracking-wide border border-slate-700 transition-colors cursor-pointer whitespace-nowrap"
             >
               2P Local
             </button>
@@ -293,15 +339,15 @@ export function TitleScreen({
                 e.currentTarget.blur();
                 openOnlineMenu();
               }}
-              className="w-full py-2.5 px-6 rounded-lg bg-blue-600/95 hover:bg-blue-500 text-white font-display text-xl font-bold uppercase tracking-wide border border-blue-400/60 transition-colors cursor-pointer whitespace-nowrap"
+              className="w-full py-2 px-6 rounded-lg bg-blue-600/95 hover:bg-blue-500 text-white font-display text-xl font-bold uppercase tracking-wide border border-blue-400/60 transition-colors cursor-pointer whitespace-nowrap"
             >
-              Play Online
+              Online Rooms
             </button>
 
             <button
               type="button"
               onClick={() => onChangeMenuView('setup')}
-              className="w-full py-2.5 px-6 rounded-lg bg-slate-950/90 hover:bg-slate-900 text-slate-300 hover:text-white font-semibold text-sm border border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
+              className="w-full py-2 px-6 rounded-lg bg-slate-950/90 hover:bg-slate-900 text-slate-300 hover:text-white font-semibold text-sm border border-slate-800 transition-colors cursor-pointer whitespace-nowrap"
             >
               Match Setup
             </button>
@@ -762,12 +808,17 @@ export function TitleScreen({
                 className={`text-xs font-medium mt-1 ${
                   onlineState.status === 'connected'
                     ? 'text-emerald-400'
-                    : onlineState.status === 'error' || onlineState.status === 'disconnected'
+                    : (onlineTab === 'quick' && quickMatchStatus === 'error') ||
+                        onlineState.status === 'error' ||
+                        onlineState.status === 'disconnected'
                       ? 'text-rose-400'
-                      : 'text-slate-400'
+                      : onlineTab === 'quick' &&
+                          (quickMatchStatus === 'searching' || quickMatchStatus === 'matched')
+                        ? 'text-amber-300'
+                        : 'text-slate-400'
                 }`}
               >
-                {getStatusText(onlineState)}
+                {getStatusText(onlineState, onlineTab, quickMatchStatus, quickMatchError)}
               </p>
             </div>
             <button
@@ -782,11 +833,28 @@ export function TitleScreen({
             </button>
           </div>
 
-          {/* Create / Join Tabs */}
-          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-slate-900 border border-slate-800">
+          {/* Quick Match / Create / Join Tabs */}
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800">
             <button
               type="button"
               onClick={() => {
+                if (onlineTab !== 'quick') {
+                  onLeaveOnline();
+                }
+                onChangeOnlineTab('quick');
+              }}
+              className={`py-1.5 rounded-md text-xs font-bold uppercase tracking-wide transition-colors cursor-pointer ${
+                onlineTab === 'quick'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Quick Match
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onCancelQuickMatch();
                 onChangeOnlineTab('host');
                 if (onlineState.role !== 'host' || onlineState.status === 'idle' || onlineState.status === 'error' || onlineState.status === 'disconnected') {
                   onHostOnline();
@@ -803,6 +871,7 @@ export function TitleScreen({
             <button
               type="button"
               onClick={() => {
+                onCancelQuickMatch();
                 onChangeOnlineTab('join');
                 if (onlineState.role === 'host') {
                   onLeaveOnline();
@@ -818,7 +887,99 @@ export function TitleScreen({
             </button>
           </div>
 
-          {onlineTab === 'host' ? (
+          {onlineTab === 'quick' ? (
+            <>
+              {/* Queue Status Card */}
+              <div className="rounded-lg bg-slate-900/90 border border-slate-800 p-3.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`w-3 h-3 rounded-full shrink-0 ${
+                      quickMatchStatus === 'matched' || isConnected
+                        ? 'bg-emerald-400'
+                        : quickMatchStatus === 'searching'
+                          ? 'bg-amber-400 animate-pulse'
+                          : quickMatchStatus === 'error'
+                            ? 'bg-rose-500'
+                            : 'bg-slate-600'
+                    }`}
+                  />
+                  <div>
+                    <div className="text-sm font-bold text-white">
+                      {quickMatchStatus === 'matched'
+                        ? 'Opponent Found!'
+                        : quickMatchStatus === 'searching'
+                          ? 'Finding Opponent...'
+                          : quickMatchStatus === 'error'
+                            ? 'Matchmaking Interrupted'
+                            : '1v1 Quick Matchmaking'}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      {quickMatchStatus === 'matched'
+                        ? `Room ${onlineState.roomCode} · Launching match automatically`
+                        : `${STAGES[config.stage].name} · ${config.stocks} Stocks`}
+                    </div>
+                  </div>
+                </div>
+
+                {quickMatchStatus === 'matched' && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-slate-950 border border-slate-800">
+                    <FighterEmblem
+                      id={onlineState.role === 'host' ? config.p2Fighter : config.p1Fighter}
+                      className="w-6 h-6 shrink-0"
+                    />
+                    <span className="text-xs font-bold text-slate-200">
+                      {FIGHTERS[onlineState.role === 'host' ? config.p2Fighter : config.p1Fighter].name}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Fighter Select for Quick Play */}
+              <div>
+                <div className="text-xs font-semibold text-slate-300 mb-2">Your Fighter</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {FIGHTER_LIST.map((f) => {
+                    const selected = quickFighter === f.id;
+                    return (
+                      <button
+                        key={`qm-${f.id}`}
+                        type="button"
+                        disabled={quickMatchStatus === 'matched'}
+                        aria-label={`Quick match select ${f.name}`}
+                        onClick={() => onChangeQuickFighter(f.id)}
+                        className={`flex flex-col items-center gap-1.5 p-2.5 rounded-lg border transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                          selected
+                            ? 'bg-slate-800 border-emerald-400 text-white'
+                            : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-600'
+                        }`}
+                      >
+                        <FighterEmblem id={f.id} className="w-9 h-9" />
+                        <span className="text-sm font-bold">{f.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {quickMatchStatus === 'searching' || quickMatchStatus === 'matched' ? (
+                <button
+                  type="button"
+                  onClick={onCancelQuickMatch}
+                  className="w-full py-3 rounded-lg bg-slate-800 hover:bg-rose-950/90 text-slate-200 hover:text-rose-200 border border-slate-700 hover:border-rose-700 font-display text-2xl font-extrabold uppercase tracking-wide transition-colors cursor-pointer"
+                >
+                  Cancel Search
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onStartQuickMatch()}
+                  className="w-full py-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-display text-2xl font-extrabold uppercase tracking-wide shadow-[0_4px_0_#065F46] transition-colors cursor-pointer"
+                >
+                  Find Match
+                </button>
+              )}
+            </>
+          ) : onlineTab === 'host' ? (
             <>
               {/* Room Code & Share Link */}
               <div className="rounded-lg bg-slate-900/90 border border-slate-800 p-3 flex flex-wrap items-center justify-between gap-2">

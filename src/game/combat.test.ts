@@ -821,6 +821,105 @@ test('wssRelay MQTT codec encodes packets and decodes coalesced and fragmented f
   assert.equal(pass2.remainder.length, 0);
 });
 
+import {
+  createQuickMatchState,
+  decidePairHost,
+  evaluateQuickMatchPacket,
+  parseQuickMatchPacket,
+} from './matchmaking';
 
+test('matchmaking tie-breaker, packet parsing, and pairing state machine avoid dual-host races', () => {
+  assert.equal(decidePairHost('id_aaa', 'id_bbb'), 'a');
+  assert.equal(decidePairHost('id_zzz', 'id_bbb'), 'b');
 
+  // Invalid or corrupt JSON is safely ignored
+  assert.equal(parseQuickMatchPacket('not json'), null);
+  assert.equal(parseQuickMatchPacket(JSON.stringify({ t: 'seek', id: 'p1', room: 'XX', fighter: 'blaze' })), null);
 
+  let hostState = createQuickMatchState('blaze', 'id_aaa', 'HOST99');
+  let guestState = createQuickMatchState('titan', 'id_zzz', 'GUES88');
+
+  // Self-seek must be ignored
+  const selfEval = evaluateQuickMatchPacket(hostState, {
+    t: 'seek',
+    id: 'id_aaa',
+    room: 'HOST99',
+    fighter: 'blaze',
+    ts: 1,
+  });
+  assert.equal(selfEval.kind, 'ignore');
+
+  // Guest sees smaller ID seek -> nudges back with seek instead of claiming host
+  const guestNudge = evaluateQuickMatchPacket(guestState, {
+    t: 'seek',
+    id: 'id_aaa',
+    room: 'HOST99',
+    fighter: 'blaze',
+    ts: 2,
+  });
+  assert.equal(guestNudge.kind, 'nudge_seek');
+
+  // Host (smaller ID) sees Guest seek -> pairs immediately as host with its room
+  const hostPaired = evaluateQuickMatchPacket(hostState, {
+    t: 'seek',
+    id: 'id_zzz',
+    room: 'GUES88',
+    fighter: 'titan',
+    ts: 3,
+  });
+  assert.equal(hostPaired.kind, 'paired');
+  if (hostPaired.kind === 'paired') {
+    hostState = hostPaired.nextState;
+    assert.equal(hostPaired.result.role, 'host');
+    assert.equal(hostPaired.result.roomCode, 'HOST99');
+    assert.equal(hostPaired.result.opponentFighter, 'titan');
+    assert.ok(hostPaired.matchPacket && hostPaired.matchPacket.t === 'match');
+
+    // Unrelated third player ignores match not addressed to them
+    const thirdState = createQuickMatchState('gale', 'id_mmm', 'THRD11');
+    const thirdEval = evaluateQuickMatchPacket(thirdState, hostPaired.matchPacket!);
+    assert.equal(thirdEval.kind, 'ignore');
+
+    // Guest receives match addressed to it -> pairs as guest into host's room
+    const guestPaired = evaluateQuickMatchPacket(guestState, hostPaired.matchPacket!);
+    assert.equal(guestPaired.kind, 'paired');
+    if (guestPaired.kind === 'paired') {
+      guestState = guestPaired.nextState;
+      assert.equal(guestPaired.result.role, 'guest');
+      assert.equal(guestPaired.result.roomCode, 'HOST99');
+      assert.equal(guestPaired.result.opponentFighter, 'blaze');
+    }
+  }
+
+  // Already-matched guest rejects late competing host with busy packet
+  const lateMatch = evaluateQuickMatchPacket(guestState, {
+    t: 'match',
+    hostId: 'id_000',
+    guestId: 'id_zzz',
+    room: 'LATE11',
+    hostFighter: 'gale',
+    guestFighter: 'titan',
+    ts: 4,
+  });
+  assert.equal(lateMatch.kind, 'send_busy');
+  if (lateMatch.kind === 'send_busy') {
+    // Host receiving busy reverts cleanly to searching and ignores that partner
+    const lateHost = createQuickMatchState('gale', 'id_000', 'LATE11');
+    const lateHostMatched = evaluateQuickMatchPacket(lateHost, {
+      t: 'seek',
+      id: 'id_zzz',
+      room: 'GUES88',
+      fighter: 'titan',
+      ts: 5,
+    });
+    assert.equal(lateHostMatched.kind, 'paired');
+    if (lateHostMatched.kind === 'paired') {
+      const recovered = evaluateQuickMatchPacket(lateHostMatched.nextState, lateMatch.busyPacket);
+      assert.equal(recovered.kind, 'partner_busy');
+      if (recovered.kind === 'partner_busy') {
+        assert.equal(recovered.nextState.status, 'searching');
+        assert.ok(recovered.nextState.ignoredPartners.has('id_zzz'));
+      }
+    }
+  }
+});

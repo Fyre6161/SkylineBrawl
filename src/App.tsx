@@ -10,6 +10,11 @@ import {
   loadHotkeySettings,
   saveHotkeySettings,
 } from './game/hotkeys';
+import {
+  QuickMatchmaker,
+  QuickMatchResult,
+  QuickMatchStatus,
+} from './game/matchmaking';
 import { NetMessage, normalizeRoomCode, parseRoomFromSearch } from './game/netcode';
 import { P2PTransport } from './game/p2p';
 import {
@@ -110,12 +115,63 @@ export default function App() {
   const [onlineState, setOnlineState] = useState<OnlineLobbyState>(INITIAL_ONLINE);
   const onlineStateRef = useRef<OnlineLobbyState>(INITIAL_ONLINE);
 
+  const matchmakerRef = useRef<QuickMatchmaker | null>(null);
+  const isQuickMatchRef = useRef(false);
+  const quickAutoStartTimerRef = useRef<number | null>(null);
+  const guestJoinDelayTimerRef = useRef<number | null>(null);
+  const [quickFighter, setQuickFighter] = useState<FighterId>('blaze');
+  const quickFighterRef = useRef<FighterId>('blaze');
+  const [quickMatchStatus, setQuickMatchStatus] = useState<QuickMatchStatus>('idle');
+  const [quickMatchError, setQuickMatchError] = useState<string | null>(null);
+
   const [hud, setHud] = useState<MatchHudSnapshot>(INITIAL_HUD);
   const [matchResult, setMatchResult] = useState<MatchResultSnapshot | null>(null);
   const [muted, setMuted] = useState(false);
   const [rematchRequested, setRematchRequested] = useState(false);
   const [opponentRematchRequested, setOpponentRematchRequested] = useState(false);
   const [disconnectNotice, setDisconnectNotice] = useState<string | null>(null);
+
+  const clearQuickTimers = useCallback(() => {
+    if (quickAutoStartTimerRef.current !== null) {
+      window.clearTimeout(quickAutoStartTimerRef.current);
+      quickAutoStartTimerRef.current = null;
+    }
+    if (guestJoinDelayTimerRef.current !== null) {
+      window.clearTimeout(guestJoinDelayTimerRef.current);
+      guestJoinDelayTimerRef.current = null;
+    }
+  }, []);
+
+  const launchHostOnlineMatch = useCallback(() => {
+    if (!p2pRef.current?.isConnected()) return;
+    clearQuickTimers();
+    isQuickMatchRef.current = false;
+    setQuickMatchStatus('idle');
+    setQuickMatchError(null);
+    matchmakerRef.current?.stop();
+    matchmakerRef.current = null;
+
+    const next: MatchConfig = {
+      ...configRef.current,
+      mode: 'online',
+      onlineRole: 'host',
+    };
+    configRef.current = next;
+    setConfig(next);
+    p2pRef.current.send({
+      type: 'start_match',
+      stage: next.stage,
+      stocks: next.stocks,
+      p1Fighter: next.p1Fighter,
+      p2Fighter: next.p2Fighter,
+    });
+    setMatchResult(null);
+    setRematchRequested(false);
+    setOpponentRematchRequested(false);
+    setDisconnectNotice(null);
+    setScreenState('playing');
+    engineRef.current?.startNewMatch(next, false);
+  }, [clearQuickTimers]);
 
   const updateOnlineState = useCallback(
     (updater: (prev: OnlineLobbyState) => OnlineLobbyState) => {
@@ -185,7 +241,47 @@ export default function App() {
         }));
 
         if (status === 'connected' && role === 'host') {
+          if (isQuickMatchRef.current) {
+            matchmakerRef.current?.stop();
+            matchmakerRef.current = null;
+          }
           sendLobbySnapshot(configRef.current, false);
+          if (isQuickMatchRef.current && screenStateRef.current === 'title') {
+            clearQuickTimers();
+            quickAutoStartTimerRef.current = window.setTimeout(() => {
+              if (
+                isQuickMatchRef.current &&
+                screenStateRef.current === 'title' &&
+                p2pRef.current?.isConnected()
+              ) {
+                launchHostOnlineMatch();
+              }
+            }, 2200);
+          }
+        }
+
+        if (status === 'connected' && role === 'guest' && isQuickMatchRef.current) {
+          const chosen = quickFighterRef.current;
+          updateOnlineState((prev) => ({
+            ...prev,
+            guestReady: true,
+          }));
+          p2pRef.current?.send({
+            type: 'guest_choice',
+            fighter: chosen,
+            ready: true,
+          });
+        }
+
+        if (
+          (status === 'disconnected' || status === 'error') &&
+          screenStateRef.current === 'title' &&
+          isQuickMatchRef.current
+        ) {
+          clearQuickTimers();
+          isQuickMatchRef.current = false;
+          setQuickMatchStatus('error');
+          setQuickMatchError(detail || 'Connection timed out. Try searching again.');
         }
 
         if (
@@ -245,9 +341,22 @@ export default function App() {
               guestReady: msg.ready,
             }));
             sendLobbySnapshot(next, msg.ready);
+            if (
+              isQuickMatchRef.current &&
+              msg.ready &&
+              screenStateRef.current === 'title'
+            ) {
+              launchHostOnlineMatch();
+            }
             break;
           }
           case 'start_match': {
+            clearQuickTimers();
+            isQuickMatchRef.current = false;
+            setQuickMatchStatus('idle');
+            setQuickMatchError(null);
+            matchmakerRef.current?.stop();
+            matchmakerRef.current = null;
             const next: MatchConfig = {
               ...configRef.current,
               mode: 'online',
@@ -293,6 +402,7 @@ export default function App() {
             setMatchResult(null);
             setRematchRequested(false);
             setOpponentRematchRequested(false);
+            setOnlineTab(role === 'host' ? 'host' : 'join');
             setMenuView('online');
             setScreenState('title');
             engineRef.current?.updatePreviewConfig(configRef.current);
@@ -324,12 +434,15 @@ export default function App() {
     }
 
     return () => {
+      clearQuickTimers();
+      matchmakerRef.current?.stop();
+      matchmakerRef.current = null;
       transport.destroy();
       p2pRef.current = null;
       engine.destroy();
       engineRef.current = null;
     };
-  }, [updateOnlineState]);
+  }, [clearQuickTimers, launchHostOnlineMatch, updateOnlineState]);
 
   const handleChangeConfig = useCallback((next: MatchConfig) => {
     configRef.current = next;
@@ -373,7 +486,137 @@ export default function App() {
     engineRef.current?.startNewMatch(nextConfig, false);
   }, []);
 
+  const handleCancelQuickMatch = useCallback(() => {
+    clearQuickTimers();
+    isQuickMatchRef.current = false;
+    matchmakerRef.current?.stop();
+    matchmakerRef.current = null;
+    setQuickMatchStatus('idle');
+    setQuickMatchError(null);
+    p2pRef.current?.destroy();
+    updateOnlineState(() => INITIAL_ONLINE);
+  }, [clearQuickTimers, updateOnlineState]);
+
+  const handleChangeQuickFighter = useCallback((fighter: FighterId) => {
+    quickFighterRef.current = fighter;
+    setQuickFighter(fighter);
+    matchmakerRef.current?.setFighter(fighter);
+    const next: MatchConfig = {
+      ...configRef.current,
+      p1Fighter: fighter,
+    };
+    configRef.current = next;
+    setConfig(next);
+    engineRef.current?.updatePreviewConfig(next);
+  }, []);
+
+  const handleStartQuickMatch = useCallback(
+    (overrideFighter?: FighterId) => {
+      const chosen = overrideFighter ?? quickFighterRef.current;
+      if (overrideFighter) {
+        quickFighterRef.current = overrideFighter;
+        setQuickFighter(overrideFighter);
+      }
+
+      clearQuickTimers();
+      matchmakerRef.current?.stop();
+      matchmakerRef.current = null;
+      p2pRef.current?.destroy();
+
+      isQuickMatchRef.current = true;
+      setQuickMatchStatus('searching');
+      setQuickMatchError(null);
+      updateOnlineState(() => INITIAL_ONLINE);
+
+      const searchConfig: MatchConfig = {
+        ...configRef.current,
+        mode: 'online',
+        onlineRole: undefined,
+        p1Fighter: chosen,
+      };
+      configRef.current = searchConfig;
+      setConfig(searchConfig);
+      engineRef.current?.updatePreviewConfig(searchConfig);
+
+      matchmakerRef.current = new QuickMatchmaker(chosen, {
+        onStatusChange: (status, detail) => {
+          setQuickMatchStatus(status);
+          if (status === 'error') {
+            isQuickMatchRef.current = false;
+            setQuickMatchError(detail || 'Could not reach quick-match queue.');
+          } else {
+            setQuickMatchError(null);
+          }
+        },
+        onRetrySearch: () => {
+          p2pRef.current?.destroy();
+          updateOnlineState(() => INITIAL_ONLINE);
+        },
+        onMatched: (result: QuickMatchResult) => {
+          setQuickMatchStatus('matched');
+          setQuickMatchError(null);
+
+          if (result.role === 'host') {
+            const hostConfig: MatchConfig = {
+              ...configRef.current,
+              mode: 'online',
+              onlineRole: 'host',
+              p1Fighter: result.myFighter,
+              p2Fighter: result.opponentFighter,
+            };
+            configRef.current = hostConfig;
+            setConfig(hostConfig);
+            engineRef.current?.updatePreviewConfig(hostConfig);
+            updateOnlineState(() => ({
+              ...INITIAL_ONLINE,
+              role: 'host',
+              roomCode: result.roomCode,
+              status: 'creating',
+            }));
+            p2pRef.current?.hostRoom(result.roomCode);
+          } else {
+            const guestConfig: MatchConfig = {
+              ...configRef.current,
+              mode: 'online',
+              onlineRole: 'guest',
+              p1Fighter: result.opponentFighter,
+              p2Fighter: result.myFighter,
+            };
+            configRef.current = guestConfig;
+            setConfig(guestConfig);
+            engineRef.current?.updatePreviewConfig(guestConfig);
+            updateOnlineState(() => ({
+              ...INITIAL_ONLINE,
+              role: 'guest',
+              roomCode: result.roomCode,
+              status: 'connecting',
+            }));
+            clearQuickTimers();
+            guestJoinDelayTimerRef.current = window.setTimeout(() => {
+              if (isQuickMatchRef.current) {
+                p2pRef.current?.joinRoom(result.roomCode);
+              }
+            }, 180);
+          }
+        },
+      });
+    },
+    [clearQuickTimers, updateOnlineState]
+  );
+
+  const handleQuickPlayOnline = useCallback(() => {
+    setMenuView('online');
+    setOnlineTab('quick');
+    handleStartQuickMatch();
+  }, [handleStartQuickMatch]);
+
   const handleHostOnline = useCallback(() => {
+    clearQuickTimers();
+    isQuickMatchRef.current = false;
+    matchmakerRef.current?.stop();
+    matchmakerRef.current = null;
+    setQuickMatchStatus('idle');
+    setQuickMatchError(null);
     const next: MatchConfig = {
       ...configRef.current,
       mode: 'online',
@@ -388,10 +631,16 @@ export default function App() {
       status: 'creating',
     }));
     p2pRef.current?.hostRoom();
-  }, [updateOnlineState]);
+  }, [clearQuickTimers, updateOnlineState]);
 
   const handleJoinOnline = useCallback(
     (rawCode: string) => {
+      clearQuickTimers();
+      isQuickMatchRef.current = false;
+      matchmakerRef.current?.stop();
+      matchmakerRef.current = null;
+      setQuickMatchStatus('idle');
+      setQuickMatchError(null);
       const code = normalizeRoomCode(rawCode);
       const next: MatchConfig = {
         ...configRef.current,
@@ -409,10 +658,16 @@ export default function App() {
       }));
       p2pRef.current?.joinRoom(code);
     },
-    [updateOnlineState]
+    [clearQuickTimers, updateOnlineState]
   );
 
   const handleLeaveOnline = useCallback(() => {
+    clearQuickTimers();
+    isQuickMatchRef.current = false;
+    matchmakerRef.current?.stop();
+    matchmakerRef.current = null;
+    setQuickMatchStatus('idle');
+    setQuickMatchError(null);
     p2pRef.current?.destroy();
     updateOnlineState(() => INITIAL_ONLINE);
     const next: MatchConfig = {
@@ -423,7 +678,7 @@ export default function App() {
     configRef.current = next;
     setConfig(next);
     engineRef.current?.updatePreviewConfig(next);
-  }, [updateOnlineState]);
+  }, [clearQuickTimers, updateOnlineState]);
 
   const handleGuestChoice = useCallback(
     (fighter: FighterId, ready: boolean) => {
@@ -448,28 +703,8 @@ export default function App() {
   );
 
   const handleStartOnlineMatch = useCallback(() => {
-    if (!p2pRef.current?.isConnected()) return;
-    const next: MatchConfig = {
-      ...configRef.current,
-      mode: 'online',
-      onlineRole: 'host',
-    };
-    configRef.current = next;
-    setConfig(next);
-    p2pRef.current.send({
-      type: 'start_match',
-      stage: next.stage,
-      stocks: next.stocks,
-      p1Fighter: next.p1Fighter,
-      p2Fighter: next.p2Fighter,
-    });
-    setMatchResult(null);
-    setRematchRequested(false);
-    setOpponentRematchRequested(false);
-    setDisconnectNotice(null);
-    setScreenState('playing');
-    engineRef.current?.startNewMatch(next, false);
-  }, []);
+    launchHostOnlineMatch();
+  }, [launchHostOnlineMatch]);
 
   const handleRequestRematch = useCallback(() => {
     setRematchRequested(true);
@@ -498,6 +733,7 @@ export default function App() {
 
     if (isOnline && !isLeavingMidMatch && p2pRef.current?.isConnected()) {
       p2pRef.current.send({ type: 'return_lobby' });
+      setOnlineTab(configRef.current.onlineRole === 'host' ? 'host' : 'join');
       setMenuView('online');
       setScreenState('title');
       engineRef.current?.updatePreviewConfig(configRef.current);
@@ -566,12 +802,19 @@ export default function App() {
           onlineTab={onlineTab}
           joinCode={joinCode}
           onlineState={onlineState}
+          quickFighter={quickFighter}
+          quickMatchStatus={quickMatchStatus}
+          quickMatchError={quickMatchError}
           onChangeMenuView={setMenuView}
           onChangeOnlineTab={setOnlineTab}
           onChangeJoinCode={setJoinCode}
           onChangeConfig={handleChangeConfig}
           onChangeHotkeys={handleChangeHotkeys}
+          onChangeQuickFighter={handleChangeQuickFighter}
           onStartMatch={handleStartMatch}
+          onQuickPlayOnline={handleQuickPlayOnline}
+          onStartQuickMatch={handleStartQuickMatch}
+          onCancelQuickMatch={handleCancelQuickMatch}
           onHostOnline={handleHostOnline}
           onJoinOnline={handleJoinOnline}
           onLeaveOnline={handleLeaveOnline}
