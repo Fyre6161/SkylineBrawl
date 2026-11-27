@@ -1,4 +1,4 @@
-export type ParticleKind = 'spark' | 'dust' | 'smoke' | 'ring' | 'star';
+export type ParticleKind = 'spark' | 'dust' | 'smoke' | 'ring' | 'star' | 'confetti';
 
 export interface ParticleSlot {
   active: boolean;
@@ -15,7 +15,7 @@ export interface ParticleSlot {
   alpha: number;
 }
 
-const POOL_SIZE = 280;
+const POOL_SIZE = 420;
 
 export class ParticlePool {
   public readonly items: ParticleSlot[];
@@ -102,6 +102,83 @@ export class ParticlePool {
     this.spawn('ring', x, y, 0, 0, startSize, grow, 0.26, color, 0.9);
   }
 
+  public spawnKoFireworks(
+    x: number,
+    y: number,
+    inwardAngle: number,
+    primaryColor: string,
+    accentColor: string,
+    isFinal = false
+  ): void {
+    const scale = isFinal ? 1.3 : 1;
+
+    // Triple staggered shockwave rings
+    this.spawn('ring', x, y, 0, 0, 14, 520 * scale, 0.34, '#FFFFFF', 0.95);
+    this.spawn('ring', x, y, 0, 0, 20, 740 * scale, 0.48, accentColor, 0.9);
+    this.spawn('ring', x, y, 0, 0, 26, 980 * scale, 0.62, primaryColor, 0.8);
+
+    const palette = ['#FFFFFF', '#FEF08A', accentColor, primaryColor, '#FB7185', '#38BDF8'];
+
+    // Directional starburst cannon shooting inward along blast beam
+    const jetCount = isFinal ? 46 : 32;
+    for (let i = 0; i < jetCount; i++) {
+      const spread = (Math.random() - 0.5) * 0.78;
+      const ang = inwardAngle + spread;
+      const spd = (420 + Math.random() * 880) * scale;
+      const isStar = i % 2 === 0;
+      this.spawn(
+        isStar ? 'star' : 'spark',
+        x,
+        y,
+        Math.cos(ang) * spd,
+        Math.sin(ang) * spd,
+        isStar ? 11 + Math.random() * 9 : 5 + Math.random() * 6,
+        -5,
+        0.48 + Math.random() * 0.42,
+        palette[i % palette.length],
+        1
+      );
+    }
+
+    // Radial halo burst + celebratory confetti streamers
+    const burstCount = isFinal ? 36 : 24;
+    for (let i = 0; i < burstCount; i++) {
+      const ang = (Math.PI * 2 * i) / burstCount + (Math.random() - 0.5) * 0.25;
+      const spd = (240 + Math.random() * 440) * scale;
+      this.spawn(
+        'star',
+        x,
+        y,
+        Math.cos(ang) * spd,
+        Math.sin(ang) * spd,
+        10 + Math.random() * 8,
+        -4,
+        0.45 + Math.random() * 0.38,
+        palette[(i + 1) % palette.length],
+        1
+      );
+    }
+
+    const confettiCount = isFinal ? 44 : 28;
+    for (let i = 0; i < confettiCount; i++) {
+      const spread = (Math.random() - 0.5) * 1.45;
+      const ang = inwardAngle + spread;
+      const spd = (260 + Math.random() * 620) * scale;
+      this.spawn(
+        'confetti',
+        x,
+        y,
+        Math.cos(ang) * spd,
+        Math.sin(ang) * spd - 90,
+        7 + Math.random() * 6,
+        0,
+        0.75 + Math.random() * 0.55,
+        palette[(i + 2) % palette.length],
+        0.95
+      );
+    }
+  }
+
   public spawnDust(x: number, y: number, dir: number, count = 4): void {
     for (let i = 0; i < count; i++) {
       this.spawn(
@@ -133,6 +210,9 @@ export class ParticlePool {
       if (p.kind === 'spark' || p.kind === 'star') {
         p.vx *= Math.pow(0.18, dt);
         p.vy *= Math.pow(0.18, dt);
+      } else if (p.kind === 'confetti') {
+        p.vx *= Math.pow(0.32, dt);
+        p.vy = p.vy * Math.pow(0.45, dt) + 280 * dt;
       } else if (p.kind === 'smoke') {
         p.vy -= 22 * dt;
       }

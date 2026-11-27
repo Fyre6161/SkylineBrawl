@@ -490,19 +490,19 @@ export class GameEngine {
           this.trauma = Math.min(1, this.trauma + 0.55);
         }
         break;
-      case 'ko':
-        this.blastBeams.push({
-          x: ev.x,
-          y: ev.y,
-          angle: ev.angle ?? 0,
-          color: ev.color ?? '#F8FAFC',
-          life: 0,
-          maxLife: 0.55,
-        });
-        this.particles.spawnBurst(ev.x, ev.y, 26, 620, ev.color ?? '#FBBF24', 'star');
-        this.audio.playBlastKo();
-        this.trauma = 0.85;
+      case 'ko': {
+        const victimSlot = ev.dir === 1 ? 1 : 0;
+        const spec = this.fighters[victimSlot].spec;
+        this.triggerKoSpectacle(
+          ev.x,
+          ev.y,
+          ev.angle ?? 0,
+          ev.color ?? spec.primaryColor,
+          spec.accentColor,
+          Boolean(ev.flag)
+        );
         break;
+      }
       case 'hazardTelegraph':
         this.audio.playHazardTelegraph();
         break;
@@ -1076,36 +1076,58 @@ export class GameEngine {
     const bx = Math.max(this.stage.blastZones.left, Math.min(this.stage.blastZones.right, victim.x));
     const by = Math.max(this.stage.blastZones.top, Math.min(this.stage.blastZones.bottom, victim.y));
 
-    this.blastBeams.push({
-      x: bx,
-      y: by,
+    const isFinal = victim.stocks === 0;
+    this.triggerKoSpectacle(
+      bx,
+      by,
       angle,
-      color: victim.spec.primaryColor,
-      life: 0,
-      maxLife: 0.55,
-    });
-
-    this.particles.spawnBurst(bx, by, 26, 620, victim.spec.accentColor, 'star');
-    this.audio.playBlastKo();
-    this.trauma = 0.85;
-    this.hitstopTimer = 0.08;
+      victim.spec.primaryColor,
+      victim.spec.accentColor,
+      isFinal
+    );
+    this.hitstopTimer = isFinal ? 0.16 : 0.11;
     this.queueNetEvent('ko', bx, by, {
       angle: Math.round(angle * 100) / 100,
-      color: victim.spec.accentColor,
+      color: victim.spec.primaryColor,
+      dir: victim.slot,
+      flag: isFinal,
     });
 
     if (victim.stocks > 0) {
       respawnFighter(victim, this.stage);
       this.koBannerText = 'KO!';
-      this.koBannerTimer = 0.85;
+      this.koBannerTimer = 1.05;
     } else {
       this.winnerSlot = other.slot;
       this.koBannerText = 'GAME!';
-      this.koBannerTimer = 1.2;
-      this.matchEndDelayTimer = 0.65;
+      this.koBannerTimer = 1.45;
+      this.matchEndDelayTimer = 1.05;
     }
     this.emitHudSnapshot();
     this.broadcastHostState(true);
+  }
+
+  private triggerKoSpectacle(
+    x: number,
+    y: number,
+    angle: number,
+    primaryColor: string,
+    accentColor: string,
+    isFinal: boolean
+  ): void {
+    this.blastBeams.push({
+      x,
+      y,
+      angle,
+      color: primaryColor,
+      accentColor,
+      isFinal,
+      life: 0,
+      maxLife: isFinal ? 0.95 : 0.78,
+    });
+    this.particles.spawnKoFireworks(x, y, angle, primaryColor, accentColor, isFinal);
+    this.audio.playBlastKo(isFinal);
+    this.trauma = isFinal ? 1.0 : 0.92;
   }
 
   private finalizeMatch(winnerSlot: 0 | 1): void {

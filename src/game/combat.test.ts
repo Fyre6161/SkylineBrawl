@@ -755,4 +755,27 @@ test('ranged special fatigue holds briefly then cools over time, cools on melee 
   assert.equal(titan.rangedDecayDelay, 0);
 });
 
+import { ParticlePool } from './particles';
+
+test('spawnKoFireworks populates rings, stars, sparks, and confetti cleanly', () => {
+  const pool = new ParticlePool();
+  pool.spawnKoFireworks(-400, 120, 0, '#EF4444', '#FDBA74', true);
+
+  const active = pool.items.filter((p) => p.active);
+  const kinds = new Set(active.map((p) => p.kind));
+
+  assert.ok(active.length >= 100, `Expected rich KO particle burst, got ${active.length}`);
+  assert.ok(kinds.has('ring'), 'Expected shockwave rings');
+  assert.ok(kinds.has('star'), 'Expected star burst particles');
+  assert.ok(kinds.has('confetti'), 'Expected confetti streamers');
+
+  // Step particles past maxLife and confirm pool cleans up
+  for (let i = 0; i < 120; i++) {
+    pool.update(1 / 60);
+  }
+  const remaining = pool.items.filter((p) => p.active);
+  assert.equal(remaining.length, 0);
+});
+
+
 

@@ -140,34 +140,60 @@ export class SoundSynth {
     osc.stop(now + (broken ? 0.33 : 0.11));
   }
 
-  public playBlastKo(): void {
+  public playBlastKo(isFinal = false): void {
     const ctx = this.ready();
     if (!ctx) return;
     const now = ctx.currentTime;
 
+    // Thunderous sub-bass blast boom
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(28, now + 0.45);
-    gain.gain.setValueAtTime(0.28, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+    osc.frequency.setValueAtTime(165, now);
+    osc.frequency.exponentialRampToValueAtTime(24, now + 0.55);
+    gain.gain.setValueAtTime(0.32, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
-    osc.stop(now + 0.5);
+    osc.stop(now + 0.6);
 
-    const chime = ctx.createOscillator();
-    const cGain = ctx.createGain();
-    chime.type = 'triangle';
-    chime.frequency.setValueAtTime(520, now);
-    chime.frequency.exponentialRampToValueAtTime(180, now + 0.35);
-    cGain.gain.setValueAtTime(0.14, now);
-    cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
-    chime.connect(cGain);
-    cGain.connect(ctx.destination);
-    chime.start(now);
-    chime.stop(now + 0.37);
+    // Filtered noise firework burst
+    const len = Math.floor(ctx.sampleRate * 0.34);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.28));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1400, now);
+    filter.frequency.exponentialRampToValueAtTime(320, now + 0.32);
+    const nGain = ctx.createGain();
+    nGain.gain.setValueAtTime(0.24, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(ctx.destination);
+    noise.start(now);
+
+    // Dramatic brassy fanfare sparkle
+    const notes = isFinal ? [392, 523.25, 659.25, 783.99, 1046.5] : [440, 554.37, 659.25, 880];
+    notes.forEach((freq, idx) => {
+      const t = now + 0.04 + idx * 0.048;
+      const chime = ctx.createOscillator();
+      const cGain = ctx.createGain();
+      chime.type = 'triangle';
+      chime.frequency.setValueAtTime(freq, t);
+      cGain.gain.setValueAtTime(isFinal ? 0.13 : 0.1, t);
+      cGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      chime.connect(cGain);
+      cGain.connect(ctx.destination);
+      chime.start(t);
+      chime.stop(t + 0.3);
+    });
   }
 
   public playCountdown(isGo: boolean): void {

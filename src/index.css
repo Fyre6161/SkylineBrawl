@@ -41,3 +41,26 @@
   -webkit-text-stroke: 3px rgba(10, 15, 30, 0.9);
   text-shadow: 0 3px 8px rgba(0, 0, 0, 0.65);
 }
+
+@keyframes ko-slam {
+  0% {
+    opacity: 0;
+    transform: scale(2.15) rotate(-5deg);
+  }
+  28% {
+    opacity: 1;
+    transform: scale(0.94) rotate(-2deg);
+  }
+  45% {
+    transform: scale(1.06) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-2deg);
+  }
+}
+
+.animate-ko-slam {
+  animation: ko-slam 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+

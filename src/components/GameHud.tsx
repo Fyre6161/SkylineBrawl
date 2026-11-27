@@ -170,9 +170,31 @@ export function GameHud({
       {/* Transient Countdown / KO Callout */}
       {(hud.countdownText || hud.koBannerText) && (
         <div className="fixed inset-0 pointer-events-none flex items-center justify-center">
-          <div className="font-display italic font-extrabold text-7xl sm:text-8xl tracking-wider text-amber-400 hud-stroke">
-            {hud.countdownText ?? hud.koBannerText}
-          </div>
+          {hud.koBannerText === 'KO!' || hud.koBannerText === 'GAME!' ? (
+            <div
+              key={hud.koBannerText}
+              className="relative flex items-center justify-center animate-ko-slam"
+            >
+              <div
+                className={`absolute -inset-x-20 sm:-inset-x-28 h-14 sm:h-16 -skew-x-12 rounded-sm shadow-[0_12px_36px_rgba(0,0,0,0.6)] border-y-2 ${
+                  hud.koBannerText === 'GAME!'
+                    ? 'bg-gradient-to-r from-transparent via-red-600/90 to-transparent border-amber-300'
+                    : 'bg-gradient-to-r from-transparent via-amber-500/90 to-transparent border-yellow-200'
+                }`}
+              />
+              <div
+                className={`relative font-display italic font-extrabold text-7xl sm:text-9xl tracking-widest hud-stroke drop-shadow-[0_6px_22px_rgba(251,191,36,0.65)] ${
+                  hud.koBannerText === 'GAME!' ? 'text-yellow-300' : 'text-white'
+                }`}
+              >
+                {hud.koBannerText}
+              </div>
+            </div>
+          ) : (
+            <div className="font-display italic font-extrabold text-7xl sm:text-8xl tracking-wider text-amber-400 hud-stroke">
+              {hud.countdownText ?? hud.koBannerText}
+            </div>
+          )}
         </div>
       )}
 

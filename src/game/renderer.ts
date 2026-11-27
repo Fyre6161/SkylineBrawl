@@ -13,6 +13,8 @@ export interface BlastBeamEffect {
   y: number;
   angle: number;
   color: string;
+  accentColor?: string;
+  isFinal?: boolean;
   life: number;
   maxLife: number;
 }
@@ -107,22 +109,7 @@ export function renderArena(
   drawStagePlatforms(ctx, stage, platforms, worldTime);
 
   for (const beam of blastBeams) {
-    const t = beam.life / beam.maxLife;
-    const alpha = Math.max(0, 1 - t);
-    ctx.save();
-    ctx.translate(beam.x, beam.y);
-    ctx.rotate(beam.angle);
-    ctx.globalAlpha = alpha * 0.9;
-    ctx.fillStyle = beam.color;
-    const halfBeam = (1 - t * 0.55) * 64;
-    ctx.beginPath();
-    ctx.moveTo(0, -halfBeam * 0.25);
-    ctx.lineTo(740, -halfBeam * 1.4);
-    ctx.lineTo(740, halfBeam * 1.4);
-    ctx.lineTo(0, halfBeam * 0.25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    drawBlastBeamSpectacle(ctx, beam);
   }
 
   for (const fighter of fighters) {
@@ -138,12 +125,92 @@ export function renderArena(
 
   ctx.restore();
 
+  // Brief high-contrast KO impact flash across screen
+  for (const beam of blastBeams) {
+    if (beam.life < 0.14) {
+      const flashAlpha = (1 - beam.life / 0.14) * (beam.isFinal ? 0.42 : 0.26);
+      ctx.save();
+      ctx.fillStyle = `rgba(255, 250, 230, ${flashAlpha})`;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    }
+  }
+
   if (!state.isTitleTour) {
     for (const fighter of fighters) {
       if (fighter.stocks <= 0 || fighter.respawnTimer > 0) continue;
       drawOffstageIndicator(ctx, width, height, fighter, state);
     }
   }
+}
+
+function drawBlastBeamSpectacle(
+  ctx: CanvasRenderingContext2D,
+  beam: BlastBeamEffect
+): void {
+  const t = Math.min(1, beam.life / beam.maxLife);
+  const alpha = Math.max(0, 1 - t * t);
+  const flareBoost = beam.isFinal ? 1.25 : 1;
+  const accent = beam.accentColor ?? '#FEF08A';
+
+  ctx.save();
+  ctx.translate(beam.x, beam.y);
+  ctx.rotate(beam.angle);
+
+  // Outer energetic blast cone
+  const halfOuter = (1 - t * 0.45) * 96 * flareBoost;
+  ctx.globalAlpha = alpha * 0.82;
+  ctx.fillStyle = beam.color;
+  ctx.beginPath();
+  ctx.moveTo(0, -halfOuter * 0.18);
+  ctx.lineTo(960, -halfOuter * 1.65);
+  ctx.lineTo(960, halfOuter * 1.65);
+  ctx.lineTo(0, halfOuter * 0.18);
+  ctx.closePath();
+  ctx.fill();
+
+  // Mid bright accent beam
+  const halfMid = (1 - t * 0.55) * 52 * flareBoost;
+  ctx.globalAlpha = alpha * 0.9;
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.moveTo(0, -halfMid * 0.14);
+  ctx.lineTo(940, -halfMid * 1.35);
+  ctx.lineTo(940, halfMid * 1.35);
+  ctx.lineTo(0, halfMid * 0.14);
+  ctx.closePath();
+  ctx.fill();
+
+  // Blazing white-hot core lance
+  const halfCore = (1 - t * 0.65) * 22 * flareBoost;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.moveTo(0, -halfCore * 0.25);
+  ctx.lineTo(900, -halfCore * 0.9);
+  ctx.lineTo(900, halfCore * 0.9);
+  ctx.lineTo(0, halfCore * 0.25);
+  ctx.closePath();
+  ctx.fill();
+
+  // Rotating 8-point starburst crown at the blast edge
+  ctx.rotate(t * 1.8);
+  const spikeCount = 8;
+  const outerR = (52 + t * 95) * flareBoost;
+  const innerR = outerR * 0.24;
+  ctx.globalAlpha = alpha * 0.92;
+  ctx.fillStyle = '#FEF08A';
+  ctx.beginPath();
+  for (let i = 0; i < spikeCount * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const a = (i * Math.PI) / spikeCount;
+    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
 }
 
 function drawStageHazard(
@@ -969,8 +1036,25 @@ function drawParticles(ctx: CanvasRenderingContext2D, pool: ParticlePool): void 
     } else if (p.kind === 'star') {
       ctx.fillStyle = p.color;
       ctx.translate(p.x, p.y);
-      ctx.rotate(t * 4);
-      ctx.fillRect(-p.size * 0.5, -p.size * 0.5, p.size, p.size);
+      ctx.rotate(t * 6);
+      const outer = p.size * 0.85;
+      const inner = p.size * 0.28;
+      ctx.beginPath();
+      for (let s = 0; s < 8; s++) {
+        const r = s % 2 === 0 ? outer : inner;
+        const a = (s * Math.PI) / 4;
+        if (s === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.kind === 'confetti') {
+      ctx.fillStyle = p.color;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(t * 11 + p.vx * 0.01);
+      const spinScale = Math.cos(t * 14 + p.vy * 0.02);
+      ctx.scale(1, Math.max(0.28, Math.abs(spinScale)));
+      ctx.fillRect(-p.size * 0.65, -p.size * 0.28, p.size * 1.3, p.size * 0.56);
     } else {
       ctx.fillStyle = p.color;
       ctx.beginPath();
