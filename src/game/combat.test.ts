@@ -777,5 +777,50 @@ test('spawnKoFireworks populates rings, stars, sparks, and confetti cleanly', ()
   assert.equal(remaining.length, 0);
 });
 
+import {
+  decodeMqttPackets,
+  encodeMqttConnect,
+  encodeMqttPublish,
+  encodeMqttSubscribe,
+} from './wssRelay';
+
+test('wssRelay MQTT codec encodes packets and decodes coalesced and fragmented frames accurately', () => {
+  const conn = encodeMqttConnect('host_AB94Z', 25);
+  assert.equal(conn[0], 0x10);
+
+  const sub = encodeMqttSubscribe(1, 'skyline-brawl/v1/AB94Z/c2h');
+  assert.equal(sub[0], 0x82);
+
+  const msg1 = JSON.stringify({ type: 'ping', ts: 1234 });
+  const msg2 = JSON.stringify({ __sbRelay: 'hello', nonce: 'xyz', pad: 'a'.repeat(180) });
+  const pub1 = encodeMqttPublish('skyline-brawl/v1/AB94Z/c2h', msg1);
+  const pub2 = encodeMqttPublish('skyline-brawl/v1/AB94Z/c2h', msg2);
+
+  // Coalesce two PUBLISH packets and split awkwardly mid-second-packet
+  const combined = new Uint8Array(pub1.length + pub2.length);
+  combined.set(pub1, 0);
+  combined.set(pub2, pub1.length);
+
+  const splitAt = pub1.length + 12;
+  const firstHalf = combined.subarray(0, splitAt);
+  const secondHalf = combined.subarray(splitAt);
+
+  const pass1 = decodeMqttPackets(firstHalf);
+  assert.equal(pass1.packets.length, 1);
+  assert.equal(pass1.packets[0].type, 3);
+  assert.equal(pass1.packets[0].payload, msg1);
+  assert.equal(pass1.remainder.length, 12);
+
+  const stitched = new Uint8Array(pass1.remainder.length + secondHalf.length);
+  stitched.set(pass1.remainder, 0);
+  stitched.set(secondHalf, pass1.remainder.length);
+
+  const pass2 = decodeMqttPackets(stitched);
+  assert.equal(pass2.packets.length, 1);
+  assert.equal(pass2.packets[0].payload, msg2);
+  assert.equal(pass2.remainder.length, 0);
+});
+
+
 
 

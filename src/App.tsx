@@ -36,6 +36,7 @@ const INITIAL_ONLINE: OnlineLobbyState = {
   roomCode: '',
   pingMs: null,
   guestReady: false,
+  transportMode: null,
 };
 
 const INITIAL_HUD: MatchHudSnapshot = {
@@ -170,7 +171,7 @@ export default function App() {
     };
 
     const transport = new P2PTransport({
-      onStatusChange: (status, detail) => {
+      onStatusChange: (status, detail, mode) => {
         const role = transport.getRole();
         const roomCode = transport.getRoomCode();
         updateOnlineState((prev) => ({
@@ -180,6 +181,7 @@ export default function App() {
           roomCode: roomCode || prev.roomCode,
           error: status === 'error' || status === 'disconnected' ? detail ?? null : null,
           guestReady: status === 'connected' ? prev.guestReady : false,
+          transportMode: status === 'connected' ? mode ?? prev.transportMode ?? null : null,
         }));
 
         if (status === 'connected' && role === 'host') {

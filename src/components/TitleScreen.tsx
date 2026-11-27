@@ -33,6 +33,7 @@ export interface OnlineLobbyState {
   roomCode: string;
   pingMs: number | null;
   guestReady: boolean;
+  transportMode?: 'webrtc' | 'relay' | null;
 }
 
 interface TitleScreenProps {
@@ -63,10 +64,18 @@ function getStatusText(online: OnlineLobbyState): string {
       return 'Waiting for opponent to join...';
     case 'connecting':
       return `Joining room ${online.roomCode}...`;
-    case 'connected':
-      return online.pingMs !== null
-        ? `Connected · ${online.pingMs} ms`
-        : 'Connected';
+    case 'connected': {
+      const modeLabel =
+        online.transportMode === 'relay'
+          ? 'Relay'
+          : online.transportMode === 'webrtc'
+            ? 'Direct P2P'
+            : null;
+      const parts = ['Connected'];
+      if (modeLabel) parts.push(modeLabel);
+      if (online.pingMs !== null) parts.push(`${online.pingMs} ms`);
+      return parts.join(' · ');
+    }
     case 'disconnected':
       return online.error || 'Opponent disconnected.';
     case 'error':
