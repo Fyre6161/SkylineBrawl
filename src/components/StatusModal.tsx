@@ -3,6 +3,7 @@ import { FighterEmblem } from './FighterEmblem';
 
 interface PauseModalProps {
   isOnline?: boolean;
+  controlSummary?: string;
   onResume: () => void;
   onRestart: () => void;
   onReturnTitle: () => void;
@@ -10,6 +11,7 @@ interface PauseModalProps {
 
 export function PauseModal({
   isOnline = false,
+  controlSummary,
   onResume,
   onRestart,
   onReturnTitle,
@@ -34,7 +36,7 @@ export function PauseModal({
         </div>
 
         <p className="text-xs text-slate-300 text-center leading-relaxed border-y border-slate-800 py-2.5">
-          Normal: J / Z · Special: K / X · Up + Special: Recovery · Shield / Dodge: L / C
+          {controlSummary ?? 'Normal: J / Z · Special: K / X · Up + Special: Recovery · Shield / Dodge: L / C'}
         </p>
 
         <div className="flex flex-col gap-2.5">

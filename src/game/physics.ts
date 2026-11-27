@@ -5,7 +5,11 @@ import {
   RuntimePlatform,
   StageSpec,
 } from './types';
-import { chooseAttackKind, getAttackTotalDuration } from './combat';
+import {
+  chooseAttackKind,
+  getAttackTotalDuration,
+  RANGED_DECAY_RATE_PER_SEC,
+} from './combat';
 
 export interface StepPhysicsEvents {
   jumped: boolean;
@@ -41,6 +45,11 @@ export function stepFighterPhysics(
   if (fighter.dropThroughTimer > 0)
     fighter.dropThroughTimer = Math.max(0, fighter.dropThroughTimer - dt);
   if (fighter.dodgeTimer > 0) fighter.dodgeTimer = Math.max(0, fighter.dodgeTimer - dt);
+  if (fighter.rangedDecayDelay > 0) {
+    fighter.rangedDecayDelay = Math.max(0, fighter.rangedDecayDelay - dt);
+  } else if (fighter.rangedHeat > 0) {
+    fighter.rangedHeat = Math.max(0, fighter.rangedHeat - RANGED_DECAY_RATE_PER_SEC * dt);
+  }
 
   // Squash & stretch exponential damping back to 1
   const squashRate = 1 - Math.exp(-16 * dt);

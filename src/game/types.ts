@@ -231,6 +231,8 @@ export interface FighterRuntime {
   squashY: number;
   walkPhase: number;
   smokeTimer: number;
+  rangedHeat: number;
+  rangedDecayDelay: number;
   // Match stats
   kos: number;
   deaths: number;
@@ -256,6 +258,7 @@ export interface ProjectileRuntime {
   color: string;
   life: number;
   maxLife: number;
+  powerScale?: number;
 }
 
 export interface MatchConfig {

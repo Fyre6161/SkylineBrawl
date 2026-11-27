@@ -611,3 +611,148 @@ test('fighter and projectile net serialization roundtrips accurately', () => {
   assert.equal(deserialized[0].x, 55.3);
   assert.equal(deserialized[0].y, 80.8);
 });
+
+import {
+  createDefaultHotkeys,
+  formatControlSummary,
+  formatKeyCode,
+  isHotkeyBound,
+  readInputFromBindings,
+  rebindHotkey,
+} from './hotkeys';
+
+test('rebindHotkey swaps conflicting bindings cleanly and preserves Escape safety', () => {
+  const base = createDefaultHotkeys();
+
+  // Escape must never overwrite a gameplay key
+  const afterEsc = rebindHotkey(base, { scope: 'singlePrimary', action: 'attack' }, 'Escape');
+  assert.equal(afterEsc.singlePrimary.attack, 'KeyJ');
+
+  // Rebinding Attack (KeyJ) to Special's key (KeyK) should swap Attack->KeyK and Special->KeyJ
+  const swapped = rebindHotkey(base, { scope: 'singlePrimary', action: 'attack' }, 'KeyK');
+  assert.equal(swapped.singlePrimary.attack, 'KeyK');
+  assert.equal(swapped.singlePrimary.special, 'KeyJ');
+
+  // Rebinding P1 Attack (KeyF) in 2P Local to P2's Left (ArrowLeft) should swap across P1 & P2
+  const localSwapped = rebindHotkey(base, { scope: 'localP1', action: 'attack' }, 'ArrowLeft');
+  assert.equal(localSwapped.localP1.attack, 'ArrowLeft');
+  assert.equal(localSwapped.localP2.left, 'KeyF');
+
+  // Clearing optional singleSecondary binding
+  const cleared = rebindHotkey(base, { scope: 'singleSecondary', action: 'attack' }, null);
+  assert.equal(cleared.singleSecondary.attack, undefined);
+});
+
+test('readInputFromBindings respects custom keys and Tap Up to Jump toggle', () => {
+  const defaults = createDefaultHotkeys();
+  const custom = rebindHotkey(defaults, { scope: 'singlePrimary', action: 'attack' }, 'KeyQ');
+
+  const held = new Set<string>(['KeyW']);
+  const just = new Set<string>(['KeyW', 'KeyQ']);
+
+  // With Tap Jump ON, KeyW triggers both up and jump
+  const withTapJump = readInputFromBindings(
+    held,
+    just,
+    custom.singlePrimary,
+    custom.singleSecondary,
+    true
+  );
+  assert.equal(withTapJump.up, true);
+  assert.equal(withTapJump.jumpJustPressed, true);
+  assert.equal(withTapJump.attackJustPressed, true);
+
+  // With Tap Jump OFF, KeyW only aims up without triggering jump
+  const noTapJump = readInputFromBindings(
+    held,
+    just,
+    custom.singlePrimary,
+    custom.singleSecondary,
+    false
+  );
+  assert.equal(noTapJump.up, true);
+  assert.equal(noTapJump.jumpJustPressed, false);
+  assert.equal(noTapJump.attackJustPressed, true);
+
+  assert.equal(isHotkeyBound(custom, 'cpu', 'KeyQ'), true);
+  assert.equal(formatKeyCode('ArrowLeft'), '←');
+  assert.equal(formatKeyCode('KeyQ'), 'Q');
+  assert.ok(formatControlSummary(custom, 'cpu').includes('Attack Q'));
+});
+
+import {
+  consumeRangedSpecialShot,
+  coolRangedHeat,
+  RANGED_BASE_MAX_LIFE,
+} from './combat';
+
+test('spamming ranged special weakens damage, knockback, speed, radius, and range down to a fair floor', () => {
+  const stage = STAGES.sky_temple;
+  const blaze = createFighterRuntime(0, FIGHTERS.blaze, false, stage, 3);
+  const spec = FIGHTERS.blaze.attacks.neutralSpecial;
+
+  const shot1 = consumeRangedSpecialShot(blaze, spec);
+  assert.equal(shot1.damage, spec.damage);
+  assert.equal(shot1.baseKnockback, spec.baseKnockback);
+  assert.equal(shot1.speed, spec.projectileSpeed);
+  assert.equal(shot1.radius, spec.projectileRadius);
+  assert.equal(shot1.maxLife, RANGED_BASE_MAX_LIFE);
+  assert.equal(shot1.powerScale, 1);
+
+  const shot2 = consumeRangedSpecialShot(blaze, spec);
+  assert.ok(shot2.damage < shot1.damage);
+  assert.ok(shot2.baseKnockback < shot1.baseKnockback);
+  assert.ok(shot2.speed < shot1.speed);
+  assert.ok(shot2.radius < shot1.radius);
+  assert.ok(shot2.maxLife < shot1.maxLife);
+
+  // Fire many times to saturate fatigue
+  let lastShot = shot2;
+  for (let i = 0; i < 8; i++) {
+    lastShot = consumeRangedSpecialShot(blaze, spec);
+  }
+  assert.equal(blaze.rangedHeat, 1);
+  assert.ok(lastShot.damage >= 2 && lastShot.damage <= Math.round(spec.damage * 0.45));
+  assert.ok(lastShot.baseKnockback < shot2.baseKnockback);
+  assert.ok(lastShot.radius >= 6 && lastShot.radius < shot2.radius);
+  assert.equal(lastShot.powerScale, 0);
+});
+
+test('ranged special fatigue holds briefly then cools over time, cools on melee hits, and resets on respawn', () => {
+  const stage = STAGES.sky_temple;
+  const titan = createFighterRuntime(0, FIGHTERS.titan, false, stage, 3);
+  const boulderSpec = FIGHTERS.titan.attacks.neutralSpecial;
+
+  // Build up fatigue
+  for (let i = 0; i < 4; i++) {
+    consumeRangedSpecialShot(titan, boulderSpec);
+  }
+  const peakedHeat = titan.rangedHeat;
+  assert.ok(peakedHeat > 0.7);
+
+  // During initial delay (0.5s < 0.75s), heat stays steady
+  for (let i = 0; i < 30; i++) {
+    stepFighterPhysics(titan, emptyInput(), stage, 1 / 60);
+  }
+  assert.equal(titan.rangedHeat, peakedHeat);
+
+  // After 2 more seconds without firing, heat cools substantially
+  for (let i = 0; i < 120; i++) {
+    stepFighterPhysics(titan, emptyInput(), stage, 1 / 60);
+  }
+  assert.ok(titan.rangedHeat < peakedHeat - 0.2, `Expected ${titan.rangedHeat} to cool from ${peakedHeat}`);
+
+  // Landing a melee hit cools ranged heat immediately
+  const beforeMelee = titan.rangedHeat;
+  coolRangedHeat(titan, 0.18);
+  assert.ok(titan.rangedHeat < beforeMelee);
+
+  // Respawn clears fatigue completely
+  consumeRangedSpecialShot(titan, boulderSpec);
+  assert.ok(titan.rangedHeat > 0);
+  respawnFighter(titan, stage);
+  assert.equal(titan.rangedHeat, 0);
+  assert.equal(titan.rangedDecayDelay, 0);
+});
+
+

@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
 import { FIGHTER_LIST, FIGHTERS } from '../game/fighters';
+import {
+  createDefaultHotkeys,
+  formatControlSummary,
+  formatKeyCode,
+  HOTKEY_ACTION_LABELS,
+  HotkeySettings,
+  rebindHotkey,
+  RebindTarget,
+} from '../game/hotkeys';
 import { buildRoomInviteUrl, isValidRoomCode, normalizeRoomCode } from '../game/netcode';
 import { STAGE_LIST, STAGES } from '../game/stages';
 import {
@@ -15,6 +24,7 @@ import { FighterEmblem } from './FighterEmblem';
 
 export type MenuView = 'main' | 'setup' | 'online';
 export type OnlineTab = 'host' | 'join';
+export type SetupTab = 'match' | 'hotkeys';
 
 export interface OnlineLobbyState {
   status: OnlineConnectionStatus;
@@ -27,6 +37,7 @@ export interface OnlineLobbyState {
 
 interface TitleScreenProps {
   config: MatchConfig;
+  hotkeys: HotkeySettings;
   menuView: MenuView;
   onlineTab: OnlineTab;
   joinCode: string;
@@ -35,6 +46,7 @@ interface TitleScreenProps {
   onChangeOnlineTab: (tab: OnlineTab) => void;
   onChangeJoinCode: (code: string) => void;
   onChangeConfig: (next: MatchConfig) => void;
+  onChangeHotkeys: (next: HotkeySettings) => void;
   onStartMatch: (overrideConfig?: MatchConfig) => void;
   onHostOnline: () => void;
   onJoinOnline: (code: string) => void;
@@ -66,6 +78,7 @@ function getStatusText(online: OnlineLobbyState): string {
 
 export function TitleScreen({
   config,
+  hotkeys,
   menuView,
   onlineTab,
   joinCode,
@@ -74,6 +87,7 @@ export function TitleScreen({
   onChangeOnlineTab,
   onChangeJoinCode,
   onChangeConfig,
+  onChangeHotkeys,
   onStartMatch,
   onHostOnline,
   onJoinOnline,
@@ -82,6 +96,44 @@ export function TitleScreen({
   onStartOnlineMatch,
 }: TitleScreenProps) {
   const [copiedType, setCopiedType] = useState<'code' | 'link' | null>(null);
+  const [setupTab, setSetupTab] = useState<SetupTab>('match');
+  const [hotkeyScopeTab, setHotkeyScopeTab] = useState<'single' | 'local'>(() =>
+    config.mode === 'local' ? 'local' : 'single'
+  );
+  const [listeningTarget, setListeningTarget] = useState<RebindTarget | null>(null);
+
+  useEffect(() => {
+    if (menuView !== 'setup' || setupTab !== 'hotkeys') {
+      setListeningTarget(null);
+    }
+  }, [menuView, setupTab]);
+
+  // Capture the next pressed key while listening for a hotkey rebind
+  useEffect(() => {
+    if (!listeningTarget) return;
+    const onCaptureKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.repeat) return;
+      if (e.code === 'Escape') {
+        setListeningTarget(null);
+        return;
+      }
+      if (/^F\d+$/.test(e.code)) return;
+      if (
+        listeningTarget.scope === 'singleSecondary' &&
+        (e.code === 'Backspace' || e.code === 'Delete')
+      ) {
+        onChangeHotkeys(rebindHotkey(hotkeys, listeningTarget, null));
+        setListeningTarget(null);
+        return;
+      }
+      onChangeHotkeys(rebindHotkey(hotkeys, listeningTarget, e.code));
+      setListeningTarget(null);
+    };
+    window.addEventListener('keydown', onCaptureKey, { capture: true });
+    return () => window.removeEventListener('keydown', onCaptureKey, { capture: true });
+  }, [listeningTarget, hotkeys, onChangeHotkeys]);
 
   // Bind Enter and Space ONLY on the main menu to start the default CPU match
   useEffect(() => {
@@ -136,7 +188,12 @@ export function TitleScreen({
   const setP2 = (p2Fighter: FighterId) => update({ p2Fighter });
 
   const isConnected = onlineState.status === 'connected';
-  const showSingleControls = menuView === 'online' || config.mode !== 'local';
+  const activeSummaryMode: GameMode = menuView === 'online' ? 'online' : config.mode;
+
+  const isListening = (target: RebindTarget) =>
+    listeningTarget !== null &&
+    listeningTarget.scope === target.scope &&
+    listeningTarget.action === target.action;
 
   return (
     <div className="fixed inset-0 z-10 flex flex-col justify-between p-6 sm:p-8 pointer-events-none">
@@ -246,177 +303,438 @@ export function TitleScreen({
       {menuView === 'setup' && (
         <section
           aria-label="Match setup"
-          className="pointer-events-auto mx-auto my-auto w-full max-w-[440px] rounded-xl bg-slate-950/94 border border-slate-700/85 p-5 shadow-2xl flex flex-col gap-4"
+          className="pointer-events-auto mx-auto my-auto w-full max-w-[470px] max-h-[calc(100vh-88px)] overflow-y-auto rounded-xl bg-slate-950/94 border border-slate-700/85 p-5 shadow-2xl flex flex-col gap-3.5"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h2 className="font-display text-2xl font-extrabold uppercase tracking-wide text-white">
               Match Setup
             </h2>
-            <button
-              type="button"
-              onClick={() => onChangeMenuView('main')}
-              className="px-3 py-1 rounded-md text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
-            >
-              Back
-            </button>
-          </div>
 
-          {/* Mode + Stocks */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800">
-              <button
-                type="button"
-                onClick={() => update({ mode: 'cpu', onlineRole: undefined })}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  config.mode === 'cpu'
-                    ? 'bg-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                1P vs CPU
-              </button>
-              <button
-                type="button"
-                onClick={() => update({ mode: 'local', onlineRole: undefined })}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  config.mode === 'local'
-                    ? 'bg-amber-500 text-slate-950'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                2P Local
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-slate-400">Stocks</span>
-              {[2, 3, 5].map((n) => (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800">
                 <button
-                  key={n}
                   type="button"
-                  aria-label={`${n} stocks`}
-                  onClick={() => setStocks(n)}
-                  className={`w-8 h-8 rounded-md text-xs font-bold tabular-nums transition-colors cursor-pointer ${
-                    config.stocks === n
-                      ? 'bg-slate-100 text-slate-950'
-                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                  onClick={() => setSetupTab('match')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    setupTab === 'match'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-slate-300 hover:text-white'
                   }`}
                 >
-                  {n}
+                  Match
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Fighter Selectors */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs font-semibold text-red-400 mb-1.5">Player 1</div>
-              <div className="flex flex-col gap-1.5">
-                {FIGHTER_LIST.map((f) => {
-                  const selected = config.p1Fighter === f.id;
-                  return (
-                    <button
-                      key={`p1-${f.id}`}
-                      type="button"
-                      aria-label={`Player 1 select ${f.name}`}
-                      onClick={() => setP1(f.id)}
-                      className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-colors cursor-pointer ${
-                        selected
-                          ? 'bg-slate-800 border-red-500 text-white'
-                          : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-600'
-                      }`}
-                    >
-                      <FighterEmblem id={f.id} className="w-7 h-7 shrink-0" />
-                      <span className="text-sm font-bold">{f.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-semibold text-blue-400 mb-1.5">
-                {config.mode === 'cpu' ? 'CPU Rival' : 'Player 2'}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {FIGHTER_LIST.map((f) => {
-                  const selected = config.p2Fighter === f.id;
-                  return (
-                    <button
-                      key={`p2-${f.id}`}
-                      type="button"
-                      aria-label={`${config.mode === 'cpu' ? 'CPU' : 'Player 2'} select ${f.name}`}
-                      onClick={() => setP2(f.id)}
-                      className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-colors cursor-pointer ${
-                        selected
-                          ? 'bg-slate-800 border-blue-500 text-white'
-                          : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-600'
-                      }`}
-                    >
-                      <FighterEmblem id={f.id} className="w-7 h-7 shrink-0" />
-                      <span className="text-sm font-bold">{f.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Stage & Difficulty */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
-            <div className="flex items-center gap-1.5">
-              {STAGE_LIST.map((st) => (
                 <button
-                  key={st.id}
                   type="button"
-                  onClick={() => setStage(st.id)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    config.stage === st.id
-                      ? 'bg-slate-100 text-slate-950'
-                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                  onClick={() => {
+                    setHotkeyScopeTab(config.mode === 'local' ? 'local' : 'single');
+                    setSetupTab('hotkeys');
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    setupTab === 'hotkeys'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-slate-300 hover:text-white'
                   }`}
                 >
-                  {st.name}
+                  Hotkeys
                 </button>
-              ))}
-            </div>
+              </div>
 
-            {config.mode === 'cpu' && (
-              <div className="flex items-center gap-1">
-                {([
-                  ['chill', 'Chill'],
-                  ['standard', 'Standard'],
-                  ['fierce', 'Fierce'],
-                ] as [CpuDifficulty, string][]).map(([diff, label]) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setListeningTarget(null);
+                  onChangeMenuView('main');
+                }}
+                className="px-3 py-1 rounded-md text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+
+          {setupTab === 'match' ? (
+            <>
+              {/* Mode + Stocks */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800">
                   <button
-                    key={diff}
                     type="button"
-                    onClick={() => setDifficulty(diff)}
-                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                      config.difficulty === diff
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                    onClick={() => update({ mode: 'cpu', onlineRole: undefined })}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      config.mode === 'cpu'
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'text-slate-300 hover:text-white'
                     }`}
                   >
-                    {label}
+                    1P vs CPU
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => update({ mode: 'local', onlineRole: undefined })}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      config.mode === 'local'
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    2P Local
+                  </button>
+                </div>
 
-          <button
-            type="button"
-            data-start="true"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onStartMatch();
-            }}
-            className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-display text-2xl font-extrabold uppercase tracking-wide shadow-[0_4px_0_#92400E] transition-colors cursor-pointer"
-          >
-            Start Match
-          </button>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium text-slate-400">Stocks</span>
+                  {[2, 3, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      aria-label={`${n} stocks`}
+                      onClick={() => setStocks(n)}
+                      className={`w-8 h-8 rounded-md text-xs font-bold tabular-nums transition-colors cursor-pointer ${
+                        config.stocks === n
+                          ? 'bg-slate-100 text-slate-950'
+                          : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fighter Selectors */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-red-400 mb-1.5">Player 1</div>
+                  <div className="flex flex-col gap-1.5">
+                    {FIGHTER_LIST.map((f) => {
+                      const selected = config.p1Fighter === f.id;
+                      return (
+                        <button
+                          key={`p1-${f.id}`}
+                          type="button"
+                          aria-label={`Player 1 select ${f.name}`}
+                          onClick={() => setP1(f.id)}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                            selected
+                              ? 'bg-slate-800 border-red-500 text-white'
+                              : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          <FighterEmblem id={f.id} className="w-7 h-7 shrink-0" />
+                          <span className="text-sm font-bold">{f.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-blue-400 mb-1.5">
+                    {config.mode === 'cpu' ? 'CPU Rival' : 'Player 2'}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {FIGHTER_LIST.map((f) => {
+                      const selected = config.p2Fighter === f.id;
+                      return (
+                        <button
+                          key={`p2-${f.id}`}
+                          type="button"
+                          aria-label={`${config.mode === 'cpu' ? 'CPU' : 'Player 2'} select ${f.name}`}
+                          onClick={() => setP2(f.id)}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                            selected
+                              ? 'bg-slate-800 border-blue-500 text-white'
+                              : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          <FighterEmblem id={f.id} className="w-7 h-7 shrink-0" />
+                          <span className="text-sm font-bold">{f.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Stage & Difficulty */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+                <div className="flex items-center gap-1.5">
+                  {STAGE_LIST.map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => setStage(st.id)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        config.stage === st.id
+                          ? 'bg-slate-100 text-slate-950'
+                          : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                      }`}
+                    >
+                      {st.name}
+                    </button>
+                  ))}
+                </div>
+
+                {config.mode === 'cpu' && (
+                  <div className="flex items-center gap-1">
+                    {([
+                      ['chill', 'Chill'],
+                      ['standard', 'Standard'],
+                      ['fierce', 'Fierce'],
+                    ] as [CpuDifficulty, string][]).map(([diff, label]) => (
+                      <button
+                        key={diff}
+                        type="button"
+                        onClick={() => setDifficulty(diff)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
+                          config.difficulty === diff
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                data-start="true"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onStartMatch();
+                }}
+                className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-display text-2xl font-extrabold uppercase tracking-wide shadow-[0_4px_0_#92400E] transition-colors cursor-pointer"
+              >
+                Start Match
+              </button>
+            </>
+          ) : (
+            <div className="flex flex-col gap-2.5" aria-label="Hotkey bindings">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListeningTarget(null);
+                      setHotkeyScopeTab('single');
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      hotkeyScopeTab === 'single'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    1P / Online
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListeningTarget(null);
+                      setHotkeyScopeTab('local');
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                      hotkeyScopeTab === 'local'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    2P Local
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListeningTarget(null);
+                    onChangeHotkeys(createDefaultHotkeys());
+                  }}
+                  className="px-2.5 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
+                >
+                  Reset Defaults
+                </button>
+              </div>
+
+              <p
+                data-testid="hotkey-status-hint"
+                className={`text-xs ${
+                  listeningTarget ? 'text-amber-300 font-semibold' : 'text-slate-400'
+                }`}
+              >
+                {listeningTarget
+                  ? listeningTarget.scope === 'singleSecondary'
+                    ? 'Press any key to bind (Esc cancels, Backspace clears)...'
+                    : 'Press any key to bind (Esc cancels)...'
+                  : 'Click a key button to rebind. Duplicate keys swap automatically.'}
+              </p>
+
+              {hotkeyScopeTab === 'single' ? (
+                <>
+                  <div className="grid grid-cols-[1fr_92px_92px] gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <span>Action</span>
+                    <span className="text-center">Primary</span>
+                    <span className="text-center">Alt</span>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    {HOTKEY_ACTION_LABELS.map(({ action, label }) => {
+                      const primTarget: RebindTarget = { scope: 'singlePrimary', action };
+                      const altTarget: RebindTarget = { scope: 'singleSecondary', action };
+                      const primActive = isListening(primTarget);
+                      const altActive = isListening(altTarget);
+                      return (
+                        <div
+                          key={`hk-single-${action}`}
+                          className="grid grid-cols-[1fr_92px_92px] items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/75 border border-slate-800/80"
+                        >
+                          <span className="text-xs font-semibold text-slate-200">{label}</span>
+                          <button
+                            type="button"
+                            aria-label={`${label} primary hotkey`}
+                            onClick={() => setListeningTarget(primActive ? null : primTarget)}
+                            className={`py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${
+                              primActive
+                                ? 'bg-amber-500 text-slate-950 border-amber-300'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
+                            }`}
+                          >
+                            {primActive
+                              ? 'Press key...'
+                              : formatKeyCode(hotkeys.singlePrimary[action])}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`${label} alternate hotkey`}
+                            onClick={() => setListeningTarget(altActive ? null : altTarget)}
+                            className={`py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${
+                              altActive
+                                ? 'bg-amber-500 text-slate-950 border-amber-300'
+                                : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                            }`}
+                          >
+                            {altActive
+                              ? 'Press key...'
+                              : formatKeyCode(hotkeys.singleSecondary[action])}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-800">
+                    <span className="text-xs font-medium text-slate-300">
+                      Tap Up to Jump
+                    </span>
+                    <button
+                      type="button"
+                      aria-pressed={hotkeys.singleTapJump}
+                      onClick={() =>
+                        onChangeHotkeys({
+                          ...hotkeys,
+                          singleTapJump: !hotkeys.singleTapJump,
+                        })
+                      }
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                        hotkeys.singleTapJump
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      {hotkeys.singleTapJump ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_92px_92px] gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <span>Action</span>
+                    <span className="text-center text-red-400">Player 1</span>
+                    <span className="text-center text-blue-400">Player 2</span>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    {HOTKEY_ACTION_LABELS.map(({ action, label }) => {
+                      const p1Target: RebindTarget = { scope: 'localP1', action };
+                      const p2Target: RebindTarget = { scope: 'localP2', action };
+                      const p1Active = isListening(p1Target);
+                      const p2Active = isListening(p2Target);
+                      return (
+                        <div
+                          key={`hk-local-${action}`}
+                          className="grid grid-cols-[1fr_92px_92px] items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/75 border border-slate-800/80"
+                        >
+                          <span className="text-xs font-semibold text-slate-200">{label}</span>
+                          <button
+                            type="button"
+                            aria-label={`P1 ${label} hotkey`}
+                            onClick={() => setListeningTarget(p1Active ? null : p1Target)}
+                            className={`py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${
+                              p1Active
+                                ? 'bg-amber-500 text-slate-950 border-amber-300'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-red-500/40'
+                            }`}
+                          >
+                            {p1Active ? 'Press key...' : formatKeyCode(hotkeys.localP1[action])}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`P2 ${label} hotkey`}
+                            onClick={() => setListeningTarget(p2Active ? null : p2Target)}
+                            className={`py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${
+                              p2Active
+                                ? 'bg-amber-500 text-slate-950 border-amber-300'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-blue-500/40'
+                            }`}
+                          >
+                            {p2Active ? 'Press key...' : formatKeyCode(hotkeys.localP2[action])}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800">
+                    <button
+                      type="button"
+                      aria-pressed={hotkeys.localP1TapJump}
+                      onClick={() =>
+                        onChangeHotkeys({
+                          ...hotkeys,
+                          localP1TapJump: !hotkeys.localP1TapJump,
+                        })
+                      }
+                      className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
+                        hotkeys.localP1TapJump
+                          ? 'bg-slate-800 border-red-500/50 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      P1 Tap Up Jump: {hotkeys.localP1TapJump ? 'ON' : 'OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={hotkeys.localP2TapJump}
+                      onClick={() =>
+                        onChangeHotkeys({
+                          ...hotkeys,
+                          localP2TapJump: !hotkeys.localP2TapJump,
+                        })
+                      }
+                      className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
+                        hotkeys.localP2TapJump
+                          ? 'bg-slate-800 border-blue-500/50 text-white'
+                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      P2 Tap Up Jump: {hotkeys.localP2TapJump ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </section>
       )}
 
@@ -744,15 +1062,7 @@ export function TitleScreen({
 
       {/* Bottom Safe Margin: Single flat control hint */}
       <div className="w-full text-center text-xs sm:text-sm text-slate-300/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
-        {showSingleControls ? (
-          <span>
-            Move WASD / Arrows · Jump Space · Attack J / Z · Special K / X · Shield L / C
-          </span>
-        ) : (
-          <span>
-            P1: WASD + F / G / H · P2: Arrows + J / K / L
-          </span>
-        )}
+        <span>{formatControlSummary(hotkeys, activeSummaryMode)}</span>
       </div>
     </div>
   );

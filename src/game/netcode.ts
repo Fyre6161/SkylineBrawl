@@ -184,6 +184,7 @@ export interface NetProjectileState {
   vy: number;
   radius: number;
   color: string;
+  powerScale?: number;
 }
 
 export type NetEventKind =
@@ -351,6 +352,7 @@ export function serializeProjectiles(projectiles: ProjectileRuntime[]): NetProje
     vy: r1(p.vy),
     radius: p.radius,
     color: p.color,
+    ...(p.powerScale !== undefined ? { powerScale: r2(p.powerScale) } : {}),
   }));
 }
 
@@ -372,5 +374,6 @@ export function deserializeProjectiles(items: NetProjectileState[]): ProjectileR
     color: p.color,
     life: 0,
     maxLife: 1.6,
+    powerScale: p.powerScale,
   }));
 }

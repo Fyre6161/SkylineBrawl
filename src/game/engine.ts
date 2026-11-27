@@ -5,6 +5,8 @@ import {
   boxesOverlap,
   checkBlastZone,
   checkProjectileHit,
+  consumeRangedSpecialShot,
+  coolRangedHeat,
   createFighterRuntime,
   getAttackHitbox,
   getHurtbox,
@@ -18,6 +20,13 @@ import {
   createStageRuntime,
   stepStageRuntime,
 } from './hazards';
+import {
+  cloneHotkeySettings,
+  createDefaultHotkeys,
+  HotkeySettings,
+  isHotkeyBound,
+  readInputFromBindings,
+} from './hotkeys';
 import {
   applyFighterState,
   deserializeProjectiles,
@@ -85,6 +94,7 @@ export class GameEngine {
 
   private keysHeld = new Set<string>();
   private keysJustPressed = new Set<string>();
+  private hotkeys: HotkeySettings = createDefaultHotkeys();
 
   private rafId = 0;
   private paceTimerId = 0;
@@ -185,15 +195,15 @@ export class GameEngine {
   private handleKeyDown = (e: KeyboardEvent): void => {
     const code = e.code;
     if (
-      code === 'Space' ||
-      code === 'ArrowUp' ||
-      code === 'ArrowDown' ||
-      code === 'ArrowLeft' ||
-      code === 'ArrowRight'
+      this.screenState === 'playing' &&
+      (code === 'Space' ||
+        code === 'ArrowUp' ||
+        code === 'ArrowDown' ||
+        code === 'ArrowLeft' ||
+        code === 'ArrowRight' ||
+        isHotkeyBound(this.hotkeys, this.config.mode, code))
     ) {
-      if (this.screenState === 'playing') {
-        e.preventDefault();
-      }
+      e.preventDefault();
     }
 
     if (e.repeat) return;
@@ -204,12 +214,17 @@ export class GameEngine {
     }
 
     if (this.screenState === 'playing') {
-      if (code === 'Escape' || e.key === 'Escape' || code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+      const boundToGame = isHotkeyBound(this.hotkeys, this.config.mode, code);
+      if (
+        code === 'Escape' ||
+        e.key === 'Escape' ||
+        (!boundToGame && (code === 'KeyP' || e.key === 'p' || e.key === 'P'))
+      ) {
         e.preventDefault();
         this.callbacks.onScreenStateRequest?.('paused');
         return;
       }
-      if (code === 'KeyM') {
+      if (!boundToGame && code === 'KeyM') {
         this.audio.setMuted(!this.audio.isMuted());
         return;
       }
@@ -263,6 +278,10 @@ export class GameEngine {
   public clearInputs(): void {
     this.keysHeld.clear();
     this.keysJustPressed.clear();
+  }
+
+  public setHotkeys(next: HotkeySettings): void {
+    this.hotkeys = cloneHotkeySettings(next);
   }
 
   private isPausedFreeze(): boolean {
@@ -510,53 +529,34 @@ export class GameEngine {
     if (this.screenState === 'paused') {
       return { ...EMPTY_INPUT };
     }
-    const held = (codes: string[]) => codes.some((c) => this.keysHeld.has(c));
-    const just = (codes: string[]) => codes.some((c) => this.keysJustPressed.has(c));
 
     if (this.config.mode === 'cpu' || this.config.mode === 'online') {
-      // In 1P vs CPU and Online 1v1, each player uses the full comfortable control layout locally
-      return {
-        left: held(['KeyA', 'ArrowLeft']),
-        right: held(['KeyD', 'ArrowRight']),
-        up: held(['KeyW', 'ArrowUp']),
-        down: held(['KeyS', 'ArrowDown']),
-        jumpJustPressed: just(['Space', 'KeyW', 'ArrowUp']),
-        jumpHeld: held(['Space', 'KeyW', 'ArrowUp']),
-        attackJustPressed: just(['KeyJ', 'KeyZ', 'KeyF']),
-        specialJustPressed: just(['KeyK', 'KeyX', 'KeyG']),
-        shieldHeld: held(['KeyL', 'KeyC', 'KeyH', 'ShiftLeft', 'ShiftRight']),
-        dodgeJustPressed: just(['KeyL', 'KeyC', 'KeyH', 'ShiftLeft', 'ShiftRight']),
-      };
+      return readInputFromBindings(
+        this.keysHeld,
+        this.keysJustPressed,
+        this.hotkeys.singlePrimary,
+        this.hotkeys.singleSecondary,
+        this.hotkeys.singleTapJump
+      );
     }
 
-    // 2P Local split controls
     if (slot === 0) {
-      return {
-        left: held(['KeyA']),
-        right: held(['KeyD']),
-        up: held(['KeyW']),
-        down: held(['KeyS']),
-        jumpJustPressed: just(['KeyW', 'Space']),
-        jumpHeld: held(['KeyW', 'Space']),
-        attackJustPressed: just(['KeyF']),
-        specialJustPressed: just(['KeyG']),
-        shieldHeld: held(['KeyH', 'ShiftLeft']),
-        dodgeJustPressed: just(['KeyH', 'ShiftLeft']),
-      };
+      return readInputFromBindings(
+        this.keysHeld,
+        this.keysJustPressed,
+        this.hotkeys.localP1,
+        undefined,
+        this.hotkeys.localP1TapJump
+      );
     }
 
-    return {
-      left: held(['ArrowLeft']),
-      right: held(['ArrowRight']),
-      up: held(['ArrowUp']),
-      down: held(['ArrowDown']),
-      jumpJustPressed: just(['ArrowUp']),
-      jumpHeld: held(['ArrowUp']),
-      attackJustPressed: just(['KeyJ', 'Numpad1']),
-      specialJustPressed: just(['KeyK', 'Numpad2']),
-      shieldHeld: held(['KeyL', 'Numpad3', 'ShiftRight']),
-      dodgeJustPressed: just(['KeyL', 'Numpad3', 'ShiftRight']),
-    };
+    return readInputFromBindings(
+      this.keysHeld,
+      this.keysJustPressed,
+      this.hotkeys.localP2,
+      undefined,
+      this.hotkeys.localP2TapJump
+    );
   }
 
   private scheduleNextFrame(renderMs: number): void {
@@ -850,23 +850,25 @@ export class GameEngine {
       }
       if (ev.spawnedProjectile && f.attack) {
         const spec = f.attack.spec;
+        const scaled = consumeRangedSpecialShot(f, spec);
         this.projectiles.push({
           id: this.nextProjId++,
           ownerSlot: f.slot,
           visual: spec.projectileVisual ?? 'fireball',
           x: f.x + spec.offsetX * f.facing,
           y: f.y + spec.offsetY,
-          vx: (spec.projectileSpeed ?? 520) * f.facing,
-          vy: spec.projectileVy ?? 0,
-          gravity: spec.projectileGravity ?? 0,
-          radius: spec.projectileRadius ?? 13,
-          damage: spec.damage,
-          baseKnockback: spec.baseKnockback,
-          knockbackGrowth: spec.knockbackGrowth,
+          vx: scaled.speed * f.facing,
+          vy: scaled.vy,
+          gravity: scaled.gravity,
+          radius: scaled.radius,
+          damage: scaled.damage,
+          baseKnockback: scaled.baseKnockback,
+          knockbackGrowth: scaled.knockbackGrowth,
           angleDeg: spec.angleDeg,
           color: f.spec.accentColor,
           life: 0,
-          maxLife: 1.6,
+          maxLife: scaled.maxLife,
+          powerScale: scaled.powerScale,
         });
       }
 
@@ -1003,6 +1005,9 @@ export class GameEngine {
     );
 
     if (res.connected) {
+      if (!res.blocked) {
+        coolRangedHeat(attacker, 0.18);
+      }
       const heavy = spec.damage >= 12 || defender.damage > 95;
       this.onHitConnected(res, heavy);
     }

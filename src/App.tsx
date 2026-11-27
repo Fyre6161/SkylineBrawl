@@ -3,6 +3,13 @@ import { GameHud } from './components/GameHud';
 import { DisconnectModal, GameOverModal, PauseModal } from './components/StatusModal';
 import { MenuView, OnlineLobbyState, OnlineTab, TitleScreen } from './components/TitleScreen';
 import { GameEngine } from './game/engine';
+import {
+  formatControlSummary,
+  HotkeySettings,
+  isHotkeyBound,
+  loadHotkeySettings,
+  saveHotkeySettings,
+} from './game/hotkeys';
 import { NetMessage, normalizeRoomCode, parseRoomFromSearch } from './game/netcode';
 import { P2PTransport } from './game/p2p';
 import {
@@ -80,6 +87,9 @@ export default function App() {
   const [config, setConfig] = useState<MatchConfig>(INITIAL_CONFIG);
   const configRef = useRef<MatchConfig>(INITIAL_CONFIG);
 
+  const [hotkeys, setHotkeys] = useState<HotkeySettings>(() => loadHotkeySettings());
+  const hotkeysRef = useRef<HotkeySettings>(hotkeys);
+
   const [screenState, setScreenState] = useState<GameScreenState>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('autostart') === '1' ? 'playing' : 'title';
@@ -144,6 +154,7 @@ export default function App() {
         p2pRef.current?.send(msg);
       },
     });
+    engine.setHotkeys(hotkeysRef.current);
     engineRef.current = engine;
 
     const sendLobbySnapshot = (curConfig: MatchConfig, guestReady: boolean) => {
@@ -339,6 +350,13 @@ export default function App() {
     }
   }, []);
 
+  const handleChangeHotkeys = useCallback((next: HotkeySettings) => {
+    hotkeysRef.current = next;
+    setHotkeys(next);
+    saveHotkeySettings(next);
+    engineRef.current?.setHotkeys(next);
+  }, []);
+
   const handleStartMatch = useCallback((overrideConfig?: MatchConfig) => {
     const nextConfig = overrideConfig ?? configRef.current;
     if (overrideConfig) {
@@ -508,17 +526,22 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      if (screenStateRef.current === 'paused' && (e.code === 'Escape' || e.code === 'KeyP')) {
+      const boundToGame = isHotkeyBound(hotkeysRef.current, configRef.current.mode, e.code);
+      if (
+        screenStateRef.current === 'paused' &&
+        (e.code === 'Escape' || (!boundToGame && e.code === 'KeyP'))
+      ) {
         e.preventDefault();
         handleResume();
       } else if (
         screenStateRef.current === 'playing' &&
+        !boundToGame &&
         e.code === 'KeyR' &&
         configRef.current.mode !== 'online'
       ) {
         e.preventDefault();
         handleRestart();
-      } else if (screenStateRef.current === 'playing' && e.code === 'KeyM') {
+      } else if (screenStateRef.current === 'playing' && !boundToGame && e.code === 'KeyM') {
         setMuted(engineRef.current?.audio.isMuted() ?? false);
       }
     };
@@ -536,6 +559,7 @@ export default function App() {
       {screenState === 'title' && (
         <TitleScreen
           config={config}
+          hotkeys={hotkeys}
           menuView={menuView}
           onlineTab={onlineTab}
           joinCode={joinCode}
@@ -544,6 +568,7 @@ export default function App() {
           onChangeOnlineTab={setOnlineTab}
           onChangeJoinCode={setJoinCode}
           onChangeConfig={handleChangeConfig}
+          onChangeHotkeys={handleChangeHotkeys}
           onStartMatch={handleStartMatch}
           onHostOnline={handleHostOnline}
           onJoinOnline={handleJoinOnline}
@@ -567,6 +592,7 @@ export default function App() {
       {screenState === 'paused' && !disconnectNotice && (
         <PauseModal
           isOnline={isOnlineMatch}
+          controlSummary={formatControlSummary(hotkeys, config.mode)}
           onResume={handleResume}
           onRestart={handleRestart}
           onReturnTitle={handleReturnTitle}

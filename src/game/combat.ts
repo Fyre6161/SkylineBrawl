@@ -51,6 +51,8 @@ export function createFighterRuntime(
     squashY: 1,
     walkPhase: 0,
     smokeTimer: 0,
+    rangedHeat: 0,
+    rangedDecayDelay: 0,
     kos: 0,
     deaths: 0,
     damageDealt: 0,
@@ -73,6 +75,67 @@ export function calculateKnockback(
   const scaled =
     baseKnockback + safeDamage * knockbackGrowth * (1 + Math.min(180, safeDamage) * 0.0018);
   return Math.min(1650, scaled / Math.max(0.8, targetWeight));
+}
+
+export const RANGED_HEAT_PER_SHOT = 0.22;
+export const RANGED_DECAY_DELAY_SEC = 0.75;
+export const RANGED_DECAY_RATE_PER_SEC = 0.18;
+export const RANGED_BASE_MAX_LIFE = 1.6;
+
+export interface ScaledProjectileStats {
+  damage: number;
+  baseKnockback: number;
+  knockbackGrowth: number;
+  speed: number;
+  vy: number;
+  gravity: number;
+  radius: number;
+  maxLife: number;
+  powerScale: number;
+}
+
+export function computeScaledProjectileStats(
+  spec: AttackSpec,
+  rangedHeat: number
+): ScaledProjectileStats {
+  const clampedHeat = Math.max(0, Math.min(1, rangedHeat));
+  const freshness = 1 - clampedHeat;
+  const damageScale = 0.4 + 0.6 * freshness;
+  const knockbackScale = 0.45 + 0.55 * freshness;
+  const speedScale = 0.72 + 0.28 * freshness;
+  const radiusScale = 0.72 + 0.28 * freshness;
+  const lifeScale = 0.58 + 0.42 * freshness;
+
+  const baseSpeed = spec.projectileSpeed ?? 520;
+  const baseVy = spec.projectileVy ?? 0;
+  const baseRadius = spec.projectileRadius ?? 13;
+
+  return {
+    damage: Math.max(2, Math.round(spec.damage * damageScale)),
+    baseKnockback: Math.round(spec.baseKnockback * knockbackScale),
+    knockbackGrowth: Math.round(spec.knockbackGrowth * knockbackScale * 100) / 100,
+    speed: Math.round(baseSpeed * speedScale),
+    vy: Math.round(baseVy * speedScale),
+    gravity: spec.projectileGravity ?? 0,
+    radius: Math.max(6, Math.round(baseRadius * radiusScale * 10) / 10),
+    maxLife: Math.round(RANGED_BASE_MAX_LIFE * lifeScale * 100) / 100,
+    powerScale: Math.round(freshness * 100) / 100,
+  };
+}
+
+export function consumeRangedSpecialShot(
+  fighter: FighterRuntime,
+  spec: AttackSpec
+): ScaledProjectileStats {
+  const scaled = computeScaledProjectileStats(spec, fighter.rangedHeat);
+  fighter.rangedHeat = Math.min(1, Math.round((fighter.rangedHeat + RANGED_HEAT_PER_SHOT) * 1000) / 1000);
+  fighter.rangedDecayDelay = RANGED_DECAY_DELAY_SEC;
+  return scaled;
+}
+
+export function coolRangedHeat(fighter: FighterRuntime, amount: number): void {
+  if (fighter.rangedHeat <= 0) return;
+  fighter.rangedHeat = Math.max(0, Math.round((fighter.rangedHeat - amount) * 1000) / 1000);
 }
 
 export function chooseAttackKind(
@@ -328,6 +391,8 @@ export function respawnFighter(fighter: FighterRuntime, stage: StageSpec): void 
   fighter.upSpecialUsed = false;
   fighter.invulnTimer = 2.0;
   fighter.respawnTimer = 1.35;
+  fighter.rangedHeat = 0;
+  fighter.rangedDecayDelay = 0;
   fighter.lastHitBySlot = null;
   void stage;
 }

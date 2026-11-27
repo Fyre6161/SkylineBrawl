@@ -11771,7 +11771,7 @@ function GameHud({ hud, muted, isOnline = false, onToggleMute, onPause, onRestar
 	});
 }
 // src/components/StatusModal.tsx
-function PauseModal({ isOnline = false, onResume, onRestart, onReturnTitle }) {
+function PauseModal({ isOnline = false, controlSummary, onResume, onRestart, onReturnTitle }) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		className: "fixed inset-0 z-20 flex items-center justify-center bg-slate-950/75 p-4",
 		role: "dialog",
@@ -11792,7 +11792,7 @@ function PauseModal({ isOnline = false, onResume, onRestart, onReturnTitle }) {
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 					className: "text-xs text-slate-300 text-center leading-relaxed border-y border-slate-800 py-2.5",
-					children: "Normal: J / Z · Special: K / X · Up + Special: Recovery · Shield / Dodge: L / C"
+					children: controlSummary ?? "Normal: J / Z · Special: K / X · Up + Special: Recovery · Shield / Dodge: L / C"
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "flex flex-col gap-2.5",
@@ -12487,6 +12487,276 @@ var FIGHTER_LIST = [
 	FIGHTERS.gale,
 	FIGHTERS.titan
 ];
+// src/game/hotkeys.ts
+var HOTKEY_ACTION_LABELS = [
+	{
+		action: "left",
+		label: "Move Left"
+	},
+	{
+		action: "right",
+		label: "Move Right"
+	},
+	{
+		action: "up",
+		label: "Aim Up"
+	},
+	{
+		action: "down",
+		label: "Crouch / Drop"
+	},
+	{
+		action: "jump",
+		label: "Jump"
+	},
+	{
+		action: "attack",
+		label: "Normal Attack"
+	},
+	{
+		action: "special",
+		label: "Special"
+	},
+	{
+		action: "shield",
+		label: "Shield / Dodge"
+	}
+];
+var HOTKEY_STORAGE_KEY = "skyline_brawl_hotkeys_v1";
+var ALL_ACTIONS = [
+	"left",
+	"right",
+	"up",
+	"down",
+	"jump",
+	"attack",
+	"special",
+	"shield"
+];
+function createDefaultHotkeys() {
+	return {
+		singlePrimary: {
+			left: "KeyA",
+			right: "KeyD",
+			up: "KeyW",
+			down: "KeyS",
+			jump: "Space",
+			attack: "KeyJ",
+			special: "KeyK",
+			shield: "KeyL"
+		},
+		singleSecondary: {
+			left: "ArrowLeft",
+			right: "ArrowRight",
+			up: "ArrowUp",
+			down: "ArrowDown",
+			attack: "KeyZ",
+			special: "KeyX",
+			shield: "KeyC"
+		},
+		singleTapJump: true,
+		localP1: {
+			left: "KeyA",
+			right: "KeyD",
+			up: "KeyW",
+			down: "KeyS",
+			jump: "Space",
+			attack: "KeyF",
+			special: "KeyG",
+			shield: "KeyH"
+		},
+		localP1TapJump: true,
+		localP2: {
+			left: "ArrowLeft",
+			right: "ArrowRight",
+			up: "ArrowUp",
+			down: "ArrowDown",
+			jump: "Slash",
+			attack: "KeyJ",
+			special: "KeyK",
+			shield: "KeyL"
+		},
+		localP2TapJump: true
+	};
+}
+function cloneHotkeySettings(src) {
+	return {
+		singlePrimary: { ...src.singlePrimary },
+		singleSecondary: { ...src.singleSecondary },
+		singleTapJump: src.singleTapJump,
+		localP1: { ...src.localP1 },
+		localP1TapJump: src.localP1TapJump,
+		localP2: { ...src.localP2 },
+		localP2TapJump: src.localP2TapJump
+	};
+}
+function loadHotkeySettings() {
+	const defaults = createDefaultHotkeys();
+	if (typeof window === "undefined" || !window.localStorage) return defaults;
+	try {
+		const raw = window.localStorage.getItem(HOTKEY_STORAGE_KEY);
+		if (!raw) return defaults;
+		const parsed = JSON.parse(raw);
+		const pickMap = (candidate, fallback) => {
+			const obj = candidate && typeof candidate === "object" ? candidate : {};
+			return {
+				left: typeof obj.left === "string" && obj.left ? obj.left : fallback.left,
+				right: typeof obj.right === "string" && obj.right ? obj.right : fallback.right,
+				up: typeof obj.up === "string" && obj.up ? obj.up : fallback.up,
+				down: typeof obj.down === "string" && obj.down ? obj.down : fallback.down,
+				jump: typeof obj.jump === "string" && obj.jump ? obj.jump : fallback.jump,
+				attack: typeof obj.attack === "string" && obj.attack ? obj.attack : fallback.attack,
+				special: typeof obj.special === "string" && obj.special ? obj.special : fallback.special,
+				shield: typeof obj.shield === "string" && obj.shield ? obj.shield : fallback.shield
+			};
+		};
+		const pickSecondary = (candidate, fallback) => {
+			if (!candidate || typeof candidate !== "object") return { ...fallback };
+			const obj = candidate;
+			const out = {};
+			for (const act of ALL_ACTIONS) if (act in obj) {
+				if (typeof obj[act] === "string" && obj[act]) out[act] = obj[act];
+			} else if (fallback[act]) out[act] = fallback[act];
+			return out;
+		};
+		return {
+			singlePrimary: pickMap(parsed.singlePrimary, defaults.singlePrimary),
+			singleSecondary: pickSecondary(parsed.singleSecondary, defaults.singleSecondary),
+			singleTapJump: typeof parsed.singleTapJump === "boolean" ? parsed.singleTapJump : defaults.singleTapJump,
+			localP1: pickMap(parsed.localP1, defaults.localP1),
+			localP1TapJump: typeof parsed.localP1TapJump === "boolean" ? parsed.localP1TapJump : defaults.localP1TapJump,
+			localP2: pickMap(parsed.localP2, defaults.localP2),
+			localP2TapJump: typeof parsed.localP2TapJump === "boolean" ? parsed.localP2TapJump : defaults.localP2TapJump
+		};
+	} catch {
+		return defaults;
+	}
+}
+function saveHotkeySettings(settings) {
+	if (typeof window === "undefined" || !window.localStorage) return;
+	try {
+		window.localStorage.setItem(HOTKEY_STORAGE_KEY, JSON.stringify(settings));
+	} catch {}
+}
+function rebindHotkey(settings, target, newCode) {
+	if (newCode === "Escape") return settings;
+	const next = cloneHotkeySettings(settings);
+	if (target.scope === "singleSecondary") {
+		if (!newCode) {
+			delete next.singleSecondary[target.action];
+			return next;
+		}
+		if (next.singlePrimary[target.action] === newCode) return next;
+		const prev = next.singleSecondary[target.action];
+		for (const act of ALL_ACTIONS) {
+			if (act !== target.action && next.singleSecondary[act] === newCode) {
+				if (prev) next.singleSecondary[act] = prev;
+				else delete next.singleSecondary[act];
+			}
+			if (next.singlePrimary[act] === newCode) {
+				if (prev) next.singlePrimary[act] = prev;
+				else {
+					delete next.singleSecondary[target.action];
+					return next;
+				}
+			}
+		}
+		next.singleSecondary[target.action] = newCode;
+		return next;
+	}
+	if (!newCode) return next;
+	if (target.scope === "singlePrimary") {
+		const prev = next.singlePrimary[target.action];
+		if (prev === newCode) return next;
+		for (const act of ALL_ACTIONS) {
+			if (act !== target.action && next.singlePrimary[act] === newCode) next.singlePrimary[act] = prev;
+			if (next.singleSecondary[act] === newCode) next.singleSecondary[act] = prev;
+		}
+		next.singlePrimary[target.action] = newCode;
+		return next;
+	}
+	const targetMap = target.scope === "localP1" ? next.localP1 : next.localP2;
+	const otherMap = target.scope === "localP1" ? next.localP2 : next.localP1;
+	const prev = targetMap[target.action];
+	if (prev === newCode) return next;
+	for (const act of ALL_ACTIONS) {
+		if (act !== target.action && targetMap[act] === newCode) targetMap[act] = prev;
+		if (otherMap[act] === newCode) otherMap[act] = prev;
+	}
+	targetMap[target.action] = newCode;
+	return next;
+}
+function isHotkeyBound(settings, mode, code) {
+	if (mode === "local") return ALL_ACTIONS.some((a) => settings.localP1[a] === code || settings.localP2[a] === code);
+	return ALL_ACTIONS.some((a) => settings.singlePrimary[a] === code || settings.singleSecondary[a] === code);
+}
+function readInputFromBindings(keysHeld, keysJustPressed, primary, secondary, tapJump) {
+	const codesFor = (action) => {
+		const alt = secondary?.[action];
+		return alt ? [primary[action], alt] : [primary[action]];
+	};
+	const held = (codes) => codes.some((c) => keysHeld.has(c));
+	const just = (codes) => codes.some((c) => keysJustPressed.has(c));
+	const jumpCodes = tapJump ? [...codesFor("jump"), ...codesFor("up")] : codesFor("jump");
+	const shieldCodes = codesFor("shield");
+	return {
+		left: held(codesFor("left")),
+		right: held(codesFor("right")),
+		up: held(codesFor("up")),
+		down: held(codesFor("down")),
+		jumpJustPressed: just(jumpCodes),
+		jumpHeld: held(jumpCodes),
+		attackJustPressed: just(codesFor("attack")),
+		specialJustPressed: just(codesFor("special")),
+		shieldHeld: held(shieldCodes),
+		dodgeJustPressed: just(shieldCodes)
+	};
+}
+var KEY_CODE_LABELS = {
+	Space: "Space",
+	ArrowLeft: "←",
+	ArrowRight: "→",
+	ArrowUp: "↑",
+	ArrowDown: "↓",
+	ShiftLeft: "L-Shift",
+	ShiftRight: "R-Shift",
+	ControlLeft: "L-Ctrl",
+	ControlRight: "R-Ctrl",
+	AltLeft: "L-Alt",
+	AltRight: "R-Alt",
+	Enter: "Enter",
+	NumpadEnter: "NumEnter",
+	Tab: "Tab",
+	Slash: "/",
+	Period: ".",
+	Comma: ",",
+	Semicolon: ";",
+	Quote: "'",
+	BracketLeft: "[",
+	BracketRight: "]",
+	Backslash: "\\",
+	Minus: "-",
+	Equal: "=",
+	Backquote: "`",
+	Backspace: "Backspace"
+};
+function formatKeyCode(code) {
+	if (!code) return "—";
+	if (KEY_CODE_LABELS[code]) return KEY_CODE_LABELS[code];
+	if (code.startsWith("Key") && code.length === 4) return code.slice(3);
+	if (code.startsWith("Digit") && code.length === 6) return code.slice(5);
+	if (code.startsWith("Numpad")) return `Num ${code.slice(6)}`;
+	return code;
+}
+function formatControlSummary(settings, mode) {
+	if (mode === "local") {
+		const p1 = settings.localP1;
+		const p2 = settings.localP2;
+		return `P1: ${formatKeyCode(p1.left)}/${formatKeyCode(p1.right)} ${formatKeyCode(p1.jump)} ${formatKeyCode(p1.attack)}/${formatKeyCode(p1.special)}/${formatKeyCode(p1.shield)} · P2: ${formatKeyCode(p2.left)}/${formatKeyCode(p2.right)} ${formatKeyCode(p2.jump)} ${formatKeyCode(p2.attack)}/${formatKeyCode(p2.special)}/${formatKeyCode(p2.shield)}`;
+	}
+	const s = settings.singlePrimary;
+	return `Move ${formatKeyCode(s.left)}/${formatKeyCode(s.right)} · Jump ${formatKeyCode(s.jump)} · Attack ${formatKeyCode(s.attack)} · Special ${formatKeyCode(s.special)} · Shield ${formatKeyCode(s.shield)}`;
+}
 // src/game/netcode.ts
 var ROOM_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 var PEER_PREFIX = "skyline-brawl-";
@@ -12903,8 +13173,40 @@ function getStatusText(online) {
 		default: return "Ready to connect.";
 	}
 }
-function TitleScreen({ config, menuView, onlineTab, joinCode, onlineState, onChangeMenuView, onChangeOnlineTab, onChangeJoinCode, onChangeConfig, onStartMatch, onHostOnline, onJoinOnline, onLeaveOnline, onGuestChoice, onStartOnlineMatch }) {
+function TitleScreen({ config, hotkeys, menuView, onlineTab, joinCode, onlineState, onChangeMenuView, onChangeOnlineTab, onChangeJoinCode, onChangeConfig, onChangeHotkeys, onStartMatch, onHostOnline, onJoinOnline, onLeaveOnline, onGuestChoice, onStartOnlineMatch }) {
 	const [copiedType, setCopiedType] = (0, import_react.useState)(null);
+	const [setupTab, setSetupTab] = (0, import_react.useState)("match");
+	const [hotkeyScopeTab, setHotkeyScopeTab] = (0, import_react.useState)(() => config.mode === "local" ? "local" : "single");
+	const [listeningTarget, setListeningTarget] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		if (menuView !== "setup" || setupTab !== "hotkeys") setListeningTarget(null);
+	}, [menuView, setupTab]);
+	(0, import_react.useEffect)(() => {
+		if (!listeningTarget) return;
+		const onCaptureKey = (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			if (e.repeat) return;
+			if (e.code === "Escape") {
+				setListeningTarget(null);
+				return;
+			}
+			if (/^F\d+$/.test(e.code)) return;
+			if (listeningTarget.scope === "singleSecondary" && (e.code === "Backspace" || e.code === "Delete")) {
+				onChangeHotkeys(rebindHotkey(hotkeys, listeningTarget, null));
+				setListeningTarget(null);
+				return;
+			}
+			onChangeHotkeys(rebindHotkey(hotkeys, listeningTarget, e.code));
+			setListeningTarget(null);
+		};
+		window.addEventListener("keydown", onCaptureKey, { capture: true });
+		return () => window.removeEventListener("keydown", onCaptureKey, { capture: true });
+	}, [
+		listeningTarget,
+		hotkeys,
+		onChangeHotkeys
+	]);
 	(0, import_react.useEffect)(() => {
 		if (menuView !== "main") return;
 		const onKeyDown = (e) => {
@@ -12954,7 +13256,8 @@ function TitleScreen({ config, menuView, onlineTab, joinCode, onlineState, onCha
 	const setP1 = (p1Fighter) => update({ p1Fighter });
 	const setP2 = (p2Fighter) => update({ p2Fighter });
 	const isConnected = onlineState.status === "connected";
-	const showSingleControls = menuView === "online" || config.mode !== "local";
+	const activeSummaryMode = menuView === "online" ? "online" : config.mode;
+	const isListening = (target) => listeningTarget !== null && listeningTarget.scope === target.scope && listeningTarget.action === target.action;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "fixed inset-0 z-10 flex flex-col justify-between p-6 sm:p-8 pointer-events-none",
 		children: [
@@ -13052,20 +13355,41 @@ function TitleScreen({ config, menuView, onlineTab, joinCode, onlineState, onCha
 			}),
 			menuView === "setup" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 				"aria-label": "Match setup",
-				className: "pointer-events-auto mx-auto my-auto w-full max-w-[440px] rounded-xl bg-slate-950/94 border border-slate-700/85 p-5 shadow-2xl flex flex-col gap-4",
-				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "flex items-center justify-between",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-							className: "font-display text-2xl font-extrabold uppercase tracking-wide text-white",
-							children: "Match Setup"
+				className: "pointer-events-auto mx-auto my-auto w-full max-w-[470px] max-h-[calc(100vh-88px)] overflow-y-auto rounded-xl bg-slate-950/94 border border-slate-700/85 p-5 shadow-2xl flex flex-col gap-3.5",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between gap-2",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+						className: "font-display text-2xl font-extrabold uppercase tracking-wide text-white",
+						children: "Match Setup"
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => setSetupTab("match"),
+								className: `px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${setupTab === "match" ? "bg-amber-500 text-slate-950" : "text-slate-300 hover:text-white"}`,
+								children: "Match"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => {
+									setHotkeyScopeTab(config.mode === "local" ? "local" : "single");
+									setSetupTab("hotkeys");
+								},
+								className: `px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${setupTab === "hotkeys" ? "bg-amber-500 text-slate-950" : "text-slate-300 hover:text-white"}`,
+								children: "Hotkeys"
+							})]
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "button",
-							onClick: () => onChangeMenuView("main"),
+							onClick: () => {
+								setListeningTarget(null);
+								onChangeMenuView("main");
+							},
 							className: "px-3 py-1 rounded-md text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer",
 							children: "Back"
 						})]
-					}),
+					})]
+				}), setupTab === "match" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "flex flex-wrap items-center justify-between gap-3",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -13185,7 +13509,193 @@ function TitleScreen({ config, menuView, onlineTab, joinCode, onlineState, onCha
 						className: "w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-display text-2xl font-extrabold uppercase tracking-wide shadow-[0_4px_0_#92400E] transition-colors cursor-pointer",
 						children: "Start Match"
 					})
-				]
+				] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-col gap-2.5",
+					"aria-label": "Hotkey bindings",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center justify-between gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-1 p-1 rounded-lg bg-slate-900 border border-slate-800",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setListeningTarget(null);
+										setHotkeyScopeTab("single");
+									},
+									className: `px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${hotkeyScopeTab === "single" ? "bg-blue-600 text-white" : "text-slate-300 hover:text-white"}`,
+									children: "1P / Online"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setListeningTarget(null);
+										setHotkeyScopeTab("local");
+									},
+									className: `px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${hotkeyScopeTab === "local" ? "bg-blue-600 text-white" : "text-slate-300 hover:text-white"}`,
+									children: "2P Local"
+								})]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => {
+									setListeningTarget(null);
+									onChangeHotkeys(createDefaultHotkeys());
+								},
+								className: "px-2.5 py-1.5 rounded-md text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer",
+								children: "Reset Defaults"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							"data-testid": "hotkey-status-hint",
+							className: `text-xs ${listeningTarget ? "text-amber-300 font-semibold" : "text-slate-400"}`,
+							children: listeningTarget ? listeningTarget.scope === "singleSecondary" ? "Press any key to bind (Esc cancels, Backspace clears)..." : "Press any key to bind (Esc cancels)..." : "Click a key button to rebind. Duplicate keys swap automatically."
+						}),
+						hotkeyScopeTab === "single" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-[1fr_92px_92px] gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Action" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-center",
+										children: "Primary"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-center",
+										children: "Alt"
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "flex flex-col gap-1",
+								children: HOTKEY_ACTION_LABELS.map(({ action, label }) => {
+									const primTarget = {
+										scope: "singlePrimary",
+										action
+									};
+									const altTarget = {
+										scope: "singleSecondary",
+										action
+									};
+									const primActive = isListening(primTarget);
+									const altActive = isListening(altTarget);
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "grid grid-cols-[1fr_92px_92px] items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/75 border border-slate-800/80",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-xs font-semibold text-slate-200",
+												children: label
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												type: "button",
+												"aria-label": `${label} primary hotkey`,
+												onClick: () => setListeningTarget(primActive ? null : primTarget),
+												className: `py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${primActive ? "bg-amber-500 text-slate-950 border-amber-300" : "bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700"}`,
+												children: primActive ? "Press key..." : formatKeyCode(hotkeys.singlePrimary[action])
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												type: "button",
+												"aria-label": `${label} alternate hotkey`,
+												onClick: () => setListeningTarget(altActive ? null : altTarget),
+												className: `py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${altActive ? "bg-amber-500 text-slate-950 border-amber-300" : "bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800"}`,
+												children: altActive ? "Press key..." : formatKeyCode(hotkeys.singleSecondary[action])
+											})
+										]
+									}, `hk-single-${action}`);
+								})
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between pt-1.5 border-t border-slate-800",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-xs font-medium text-slate-300",
+									children: "Tap Up to Jump"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									"aria-pressed": hotkeys.singleTapJump,
+									onClick: () => onChangeHotkeys({
+										...hotkeys,
+										singleTapJump: !hotkeys.singleTapJump
+									}),
+									className: `px-3 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${hotkeys.singleTapJump ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300 border border-slate-700"}`,
+									children: hotkeys.singleTapJump ? "ON" : "OFF"
+								})]
+							})
+						] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-[1fr_92px_92px] gap-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Action" }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-center text-red-400",
+										children: "Player 1"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-center text-blue-400",
+										children: "Player 2"
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "flex flex-col gap-1",
+								children: HOTKEY_ACTION_LABELS.map(({ action, label }) => {
+									const p1Target = {
+										scope: "localP1",
+										action
+									};
+									const p2Target = {
+										scope: "localP2",
+										action
+									};
+									const p1Active = isListening(p1Target);
+									const p2Active = isListening(p2Target);
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "grid grid-cols-[1fr_92px_92px] items-center gap-1.5 px-2 py-1 rounded-md bg-slate-900/75 border border-slate-800/80",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-xs font-semibold text-slate-200",
+												children: label
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												type: "button",
+												"aria-label": `P1 ${label} hotkey`,
+												onClick: () => setListeningTarget(p1Active ? null : p1Target),
+												className: `py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${p1Active ? "bg-amber-500 text-slate-950 border-amber-300" : "bg-slate-800 hover:bg-slate-700 text-slate-100 border-red-500/40"}`,
+												children: p1Active ? "Press key..." : formatKeyCode(hotkeys.localP1[action])
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												type: "button",
+												"aria-label": `P2 ${label} hotkey`,
+												onClick: () => setListeningTarget(p2Active ? null : p2Target),
+												className: `py-1 px-2 rounded text-xs font-mono-tabular font-bold border transition-colors cursor-pointer ${p2Active ? "bg-amber-500 text-slate-950 border-amber-300" : "bg-slate-800 hover:bg-slate-700 text-slate-100 border-blue-500/40"}`,
+												children: p2Active ? "Press key..." : formatKeyCode(hotkeys.localP2[action])
+											})
+										]
+									}, `hk-local-${action}`);
+								})
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									"aria-pressed": hotkeys.localP1TapJump,
+									onClick: () => onChangeHotkeys({
+										...hotkeys,
+										localP1TapJump: !hotkeys.localP1TapJump
+									}),
+									className: `flex-1 py-1 px-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${hotkeys.localP1TapJump ? "bg-slate-800 border-red-500/50 text-white" : "bg-slate-900 border-slate-800 text-slate-400"}`,
+									children: ["P1 Tap Up Jump: ", hotkeys.localP1TapJump ? "ON" : "OFF"]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									"aria-pressed": hotkeys.localP2TapJump,
+									onClick: () => onChangeHotkeys({
+										...hotkeys,
+										localP2TapJump: !hotkeys.localP2TapJump
+									}),
+									className: `flex-1 py-1 px-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${hotkeys.localP2TapJump ? "bg-slate-800 border-blue-500/50 text-white" : "bg-slate-900 border-slate-800 text-slate-400"}`,
+									children: ["P2 Tap Up Jump: ", hotkeys.localP2TapJump ? "ON" : "OFF"]
+								})]
+							})
+						] })
+					]
+				})]
 			}),
 			menuView === "online" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
 				"aria-label": "Online 1v1 Lobby",
@@ -13431,7 +13941,7 @@ function TitleScreen({ config, menuView, onlineTab, joinCode, onlineState, onCha
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "w-full text-center text-xs sm:text-sm text-slate-300/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]",
-				children: showSingleControls ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Move WASD / Arrows · Jump Space · Attack J / Z · Special K / X · Shield L / C" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "P1: WASD + F / G / H · P2: Arrows + J / K / L" })
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: formatControlSummary(hotkeys, activeSummaryMode) })
 			})
 		]
 	});
@@ -15449,6 +15959,7 @@ var GameEngine = class {
 		this.cpuBrain = createCpuBrain();
 		this.keysHeld = /* @__PURE__ */ new Set();
 		this.keysJustPressed = /* @__PURE__ */ new Set();
+		this.hotkeys = createDefaultHotkeys();
 		this.rafId = 0;
 		this.paceTimerId = 0;
 		this.destroyed = false;
@@ -15486,20 +15997,19 @@ var GameEngine = class {
 		this.resizeObserver = null;
 		this.handleKeyDown = (e) => {
 			const code = e.code;
-			if (code === "Space" || code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight") {
-				if (this.screenState === "playing") e.preventDefault();
-			}
+			if (this.screenState === "playing" && (code === "Space" || code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight" || isHotkeyBound(this.hotkeys, this.config.mode, code))) e.preventDefault();
 			if (e.repeat) return;
 			try {
 				this.audio.unlock();
 			} catch {}
 			if (this.screenState === "playing") {
-				if (code === "Escape" || e.key === "Escape" || code === "KeyP" || e.key === "p" || e.key === "P") {
+				const boundToGame = isHotkeyBound(this.hotkeys, this.config.mode, code);
+				if (code === "Escape" || e.key === "Escape" || !boundToGame && (code === "KeyP" || e.key === "p" || e.key === "P")) {
 					e.preventDefault();
 					this.callbacks.onScreenStateRequest?.("paused");
 					return;
 				}
-				if (code === "KeyM") {
+				if (!boundToGame && code === "KeyM") {
 					this.audio.setMuted(!this.audio.isMuted());
 					return;
 				}
@@ -15592,6 +16102,9 @@ var GameEngine = class {
 	clearInputs() {
 		this.keysHeld.clear();
 		this.keysJustPressed.clear();
+	}
+	setHotkeys(next) {
+		this.hotkeys = cloneHotkeySettings(next);
 	}
 	isPausedFreeze() {
 		return this.screenState === "paused" && this.config.mode !== "online";
@@ -15779,80 +16292,9 @@ var GameEngine = class {
 	}
 	readPlayerInput(slot) {
 		if (this.screenState === "paused") return { ...EMPTY_INPUT };
-		const held = (codes) => codes.some((c) => this.keysHeld.has(c));
-		const just = (codes) => codes.some((c) => this.keysJustPressed.has(c));
-		if (this.config.mode === "cpu" || this.config.mode === "online") return {
-			left: held(["KeyA", "ArrowLeft"]),
-			right: held(["KeyD", "ArrowRight"]),
-			up: held(["KeyW", "ArrowUp"]),
-			down: held(["KeyS", "ArrowDown"]),
-			jumpJustPressed: just([
-				"Space",
-				"KeyW",
-				"ArrowUp"
-			]),
-			jumpHeld: held([
-				"Space",
-				"KeyW",
-				"ArrowUp"
-			]),
-			attackJustPressed: just([
-				"KeyJ",
-				"KeyZ",
-				"KeyF"
-			]),
-			specialJustPressed: just([
-				"KeyK",
-				"KeyX",
-				"KeyG"
-			]),
-			shieldHeld: held([
-				"KeyL",
-				"KeyC",
-				"KeyH",
-				"ShiftLeft",
-				"ShiftRight"
-			]),
-			dodgeJustPressed: just([
-				"KeyL",
-				"KeyC",
-				"KeyH",
-				"ShiftLeft",
-				"ShiftRight"
-			])
-		};
-		if (slot === 0) return {
-			left: held(["KeyA"]),
-			right: held(["KeyD"]),
-			up: held(["KeyW"]),
-			down: held(["KeyS"]),
-			jumpJustPressed: just(["KeyW", "Space"]),
-			jumpHeld: held(["KeyW", "Space"]),
-			attackJustPressed: just(["KeyF"]),
-			specialJustPressed: just(["KeyG"]),
-			shieldHeld: held(["KeyH", "ShiftLeft"]),
-			dodgeJustPressed: just(["KeyH", "ShiftLeft"])
-		};
-		return {
-			left: held(["ArrowLeft"]),
-			right: held(["ArrowRight"]),
-			up: held(["ArrowUp"]),
-			down: held(["ArrowDown"]),
-			jumpJustPressed: just(["ArrowUp"]),
-			jumpHeld: held(["ArrowUp"]),
-			attackJustPressed: just(["KeyJ", "Numpad1"]),
-			specialJustPressed: just(["KeyK", "Numpad2"]),
-			shieldHeld: held([
-				"KeyL",
-				"Numpad3",
-				"ShiftRight"
-			]),
-			dodgeJustPressed: just([
-				"KeyL",
-				"Numpad3",
-				"ShiftRight"
-			])
-		};
+		if (this.config.mode === "cpu" || this.config.mode === "online") return readInputFromBindings(this.keysHeld, this.keysJustPressed, this.hotkeys.singlePrimary, this.hotkeys.singleSecondary, this.hotkeys.singleTapJump);
+		if (slot === 0) return readInputFromBindings(this.keysHeld, this.keysJustPressed, this.hotkeys.localP1, void 0, this.hotkeys.localP1TapJump);
+		return readInputFromBindings(this.keysHeld, this.keysJustPressed, this.hotkeys.localP2, void 0, this.hotkeys.localP2TapJump);
 	}
 	scheduleNextFrame(renderMs) {
 		if (this.destroyed) return;
@@ -20533,6 +20975,8 @@ function App() {
 	const initialInviteRoom = (0, import_react.useRef)(typeof window !== "undefined" ? parseRoomFromSearch(window.location.search) : null);
 	const [config, setConfig] = (0, import_react.useState)(INITIAL_CONFIG);
 	const configRef = (0, import_react.useRef)(INITIAL_CONFIG);
+	const [hotkeys, setHotkeys] = (0, import_react.useState)(() => loadHotkeySettings());
+	const hotkeysRef = (0, import_react.useRef)(hotkeys);
 	const [screenState, setScreenState] = (0, import_react.useState)(() => {
 		return new URLSearchParams(window.location.search).get("autostart") === "1" ? "playing" : "title";
 	});
@@ -20578,6 +21022,7 @@ function App() {
 				p2pRef.current?.send(msg);
 			}
 		});
+		engine.setHotkeys(hotkeysRef.current);
 		engineRef.current = engine;
 		const sendLobbySnapshot = (curConfig, guestReady) => {
 			p2pRef.current?.send({
@@ -20738,6 +21183,12 @@ function App() {
 			guestReady: onlineStateRef.current.guestReady
 		});
 	}, []);
+	const handleChangeHotkeys = (0, import_react.useCallback)((next) => {
+		hotkeysRef.current = next;
+		setHotkeys(next);
+		saveHotkeySettings(next);
+		engineRef.current?.setHotkeys(next);
+	}, []);
 	const handleStartMatch = (0, import_react.useCallback)((overrideConfig) => {
 		const nextConfig = overrideConfig ?? configRef.current;
 		if (overrideConfig) {
@@ -20885,13 +21336,14 @@ function App() {
 	(0, import_react.useEffect)(() => {
 		const onKeyDown = (e) => {
 			if (e.repeat) return;
-			if (screenStateRef.current === "paused" && (e.code === "Escape" || e.code === "KeyP")) {
+			const boundToGame = isHotkeyBound(hotkeysRef.current, configRef.current.mode, e.code);
+			if (screenStateRef.current === "paused" && (e.code === "Escape" || !boundToGame && e.code === "KeyP")) {
 				e.preventDefault();
 				handleResume();
-			} else if (screenStateRef.current === "playing" && e.code === "KeyR" && configRef.current.mode !== "online") {
+			} else if (screenStateRef.current === "playing" && !boundToGame && e.code === "KeyR" && configRef.current.mode !== "online") {
 				e.preventDefault();
 				handleRestart();
-			} else if (screenStateRef.current === "playing" && e.code === "KeyM") setMuted(engineRef.current?.audio.isMuted() ?? false);
+			} else if (screenStateRef.current === "playing" && !boundToGame && e.code === "KeyM") setMuted(engineRef.current?.audio.isMuted() ?? false);
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
@@ -20906,6 +21358,7 @@ function App() {
 			}),
 			screenState === "title" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TitleScreen, {
 				config,
+				hotkeys,
 				menuView,
 				onlineTab,
 				joinCode,
@@ -20914,6 +21367,7 @@ function App() {
 				onChangeOnlineTab: setOnlineTab,
 				onChangeJoinCode: setJoinCode,
 				onChangeConfig: handleChangeConfig,
+				onChangeHotkeys: handleChangeHotkeys,
 				onStartMatch: handleStartMatch,
 				onHostOnline: handleHostOnline,
 				onJoinOnline: handleJoinOnline,
@@ -20931,6 +21385,7 @@ function App() {
 			}),
 			screenState === "paused" && !disconnectNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PauseModal, {
 				isOnline: isOnlineMatch,
+				controlSummary: formatControlSummary(hotkeys, config.mode),
 				onResume: handleResume,
 				onRestart: handleRestart,
 				onReturnTitle: handleReturnTitle

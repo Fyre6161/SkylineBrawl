@@ -892,6 +892,8 @@ function drawAttackEffects(
 function drawProjectile(ctx: CanvasRenderingContext2D, p: ProjectileRuntime, time: number): void {
   ctx.save();
   ctx.translate(p.x, p.y);
+  const power = p.powerScale ?? 1;
+  ctx.globalAlpha = 0.48 + 0.52 * Math.max(0, Math.min(1, power));
 
   if (p.visual === 'fireball') {
     const dir = p.vx >= 0 ? 1 : -1;
