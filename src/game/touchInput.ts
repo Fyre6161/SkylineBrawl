@@ -116,6 +116,80 @@ export class TouchInputBuffer {
 export type TouchControlMode = 'auto' | 'on' | 'off';
 export const TOUCH_MODE_STORAGE_KEY = 'skyline_brawl_touch_mode_v1';
 
+export interface TouchLayoutConfig {
+  scale: number; // 0.75 to 1.35
+  opacity: number; // 0.4 to 1.0
+  stickSide: 'left' | 'right';
+  layoutPreset: 'standard' | 'lefty' | 'compact';
+  stickOffset: { x: number; y: number };
+  jumpOffset: { x: number; y: number };
+  attackOffset: { x: number; y: number };
+  specialOffset: { x: number; y: number };
+  shieldOffset: { x: number; y: number };
+}
+
+export const DEFAULT_TOUCH_LAYOUT: TouchLayoutConfig = {
+  scale: 1.0,
+  opacity: 0.85,
+  stickSide: 'left',
+  layoutPreset: 'standard',
+  stickOffset: { x: 0, y: 0 },
+  jumpOffset: { x: 0, y: 0 },
+  attackOffset: { x: 0, y: 0 },
+  specialOffset: { x: 0, y: 0 },
+  shieldOffset: { x: 0, y: 0 },
+};
+
+export const TOUCH_LAYOUT_STORAGE_KEY = 'skyline_brawl_touch_layout_v1';
+
+export function loadTouchLayout(): TouchLayoutConfig {
+  if (typeof window === 'undefined' || !window.localStorage) return { ...DEFAULT_TOUCH_LAYOUT };
+  try {
+    const raw = window.localStorage.getItem(TOUCH_LAYOUT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        scale: typeof parsed.scale === 'number' ? Math.min(1.35, Math.max(0.75, parsed.scale)) : DEFAULT_TOUCH_LAYOUT.scale,
+        opacity: typeof parsed.opacity === 'number' ? Math.min(1.0, Math.max(0.4, parsed.opacity)) : DEFAULT_TOUCH_LAYOUT.opacity,
+        stickSide: parsed.stickSide === 'right' ? 'right' : 'left',
+        layoutPreset: ['standard', 'lefty', 'compact'].includes(parsed.layoutPreset) ? parsed.layoutPreset : DEFAULT_TOUCH_LAYOUT.layoutPreset,
+        stickOffset: {
+          x: typeof parsed.stickOffset?.x === 'number' ? parsed.stickOffset.x : 0,
+          y: typeof parsed.stickOffset?.y === 'number' ? parsed.stickOffset.y : 0,
+        },
+        jumpOffset: {
+          x: typeof parsed.jumpOffset?.x === 'number' ? parsed.jumpOffset.x : 0,
+          y: typeof parsed.jumpOffset?.y === 'number' ? parsed.jumpOffset.y : 0,
+        },
+        attackOffset: {
+          x: typeof parsed.attackOffset?.x === 'number' ? parsed.attackOffset.x : 0,
+          y: typeof parsed.attackOffset?.y === 'number' ? parsed.attackOffset.y : 0,
+        },
+        specialOffset: {
+          x: typeof parsed.specialOffset?.x === 'number' ? parsed.specialOffset.x : 0,
+          y: typeof parsed.specialOffset?.y === 'number' ? parsed.specialOffset.y : 0,
+        },
+        shieldOffset: {
+          x: typeof parsed.shieldOffset?.x === 'number' ? parsed.shieldOffset.x : 0,
+          y: typeof parsed.shieldOffset?.y === 'number' ? parsed.shieldOffset.y : 0,
+        },
+      };
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return { ...DEFAULT_TOUCH_LAYOUT };
+}
+
+export function saveTouchLayout(layout: TouchLayoutConfig): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(TOUCH_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function loadTouchControlMode(): TouchControlMode {
   if (typeof window === 'undefined' || !window.localStorage) return 'auto';
   try {
@@ -147,4 +221,5 @@ export function detectTouchCapability(): boolean {
   }
   return false;
 }
+
 

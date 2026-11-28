@@ -11656,11 +11656,25 @@ function GameHud({ hud, muted, isOnline = false, touchActive = false, onToggleMu
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "flex flex-col gap-2",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "flex items-start justify-between",
+					className: "flex items-start justify-between gap-2",
 					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-28 hidden sm:block" }),
+						touchActive ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "hidden sm:flex items-start gap-2.5",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FighterCard, { fighter: hud.fighters[0] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "px-3 py-1 rounded-lg bg-slate-950/88 border border-slate-700/75 text-slate-100 font-mono-tabular text-sm font-bold shadow-md self-center",
+									children: [
+										mins,
+										":",
+										secs
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FighterCard, { fighter: hud.fighters[1] })
+							]
+						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-28 hidden sm:block" }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "px-3.5 py-1 rounded-lg bg-slate-950/88 border border-slate-700/75 text-slate-100 font-mono-tabular text-sm font-bold shadow-md",
+							className: `px-3.5 py-1 rounded-lg bg-slate-950/88 border border-slate-700/75 text-slate-100 font-mono-tabular text-sm font-bold shadow-md ${touchActive ? "sm:hidden" : ""}`,
 							children: [
 								mins,
 								":",
@@ -11668,7 +11682,7 @@ function GameHud({ hud, muted, isOnline = false, touchActive = false, onToggleMu
 							]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex items-center gap-2 pointer-events-auto",
+							className: "flex items-center gap-2 pointer-events-auto shrink-0",
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 									type: "button",
@@ -11758,7 +11772,7 @@ function GameHud({ hud, muted, isOnline = false, touchActive = false, onToggleMu
 						})
 					]
 				}), touchActive && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "flex items-start justify-center gap-2.5 sm:gap-8",
+					className: "flex sm:hidden items-start justify-center gap-2.5",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FighterCard, { fighter: hud.fighters[0] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FighterCard, { fighter: hud.fighters[1] })]
 				})]
 			}),
@@ -11783,7 +11797,7 @@ function GameHud({ hud, muted, isOnline = false, touchActive = false, onToggleMu
 	});
 }
 // src/components/StatusModal.tsx
-function PauseModal({ isOnline = false, controlSummary, onResume, onRestart, onReturnTitle }) {
+function PauseModal({ isOnline = false, controlSummary, showTouchEdit = false, isEditingTouch = false, onResume, onRestart, onToggleTouchEdit, onReturnTitle }) {
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 		className: "fixed inset-0 z-20 flex items-center justify-center bg-slate-950/75 p-4",
 		role: "dialog",
@@ -11814,6 +11828,12 @@ function PauseModal({ isOnline = false, controlSummary, onResume, onRestart, onR
 							onClick: onResume,
 							className: "w-full py-2.5 px-4 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-colors cursor-pointer",
 							children: "Resume Match"
+						}),
+						showTouchEdit && onToggleTouchEdit && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: onToggleTouchEdit,
+							className: `w-full py-2.5 px-4 rounded-lg font-bold text-sm border transition-colors cursor-pointer ${isEditingTouch ? "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400" : "bg-blue-600/90 hover:bg-blue-500 text-white border-blue-500"}`,
+							children: isEditingTouch ? "Done Editing Touch HUD" : "Customize / Edit Touch HUD"
 						}),
 						!isOnline && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "button",
@@ -13199,7 +13219,7 @@ function getStatusText(online, onlineTab, quickMatchStatus, quickMatchError) {
 		default: return "Ready to connect.";
 	}
 }
-function TitleScreen({ config, hotkeys, touchMode, showTouchControls, gamepadCount, menuView, onlineTab, joinCode, onlineState, quickFighter, quickMatchStatus, quickMatchError, onChangeMenuView, onChangeOnlineTab, onChangeJoinCode, onChangeConfig, onChangeHotkeys, onChangeTouchMode, onChangeQuickFighter, onStartMatch, onQuickPlayOnline, onStartQuickMatch, onCancelQuickMatch, onHostOnline, onJoinOnline, onLeaveOnline, onGuestChoice, onStartOnlineMatch }) {
+function TitleScreen({ config, hotkeys, touchMode, touchLayout, showTouchControls, gamepadCount, menuView, onlineTab, joinCode, onlineState, quickFighter, quickMatchStatus, quickMatchError, onChangeMenuView, onChangeOnlineTab, onChangeJoinCode, onChangeConfig, onChangeHotkeys, onChangeTouchMode, onChangeTouchLayout, onStartTouchEditMatch, onChangeQuickFighter, onStartMatch, onQuickPlayOnline, onStartQuickMatch, onCancelQuickMatch, onHostOnline, onJoinOnline, onLeaveOnline, onGuestChoice, onStartOnlineMatch }) {
 	const [copiedType, setCopiedType] = (0, import_react.useState)(null);
 	const [setupTab, setSetupTab] = (0, import_react.useState)("match");
 	const [hotkeyScopeTab, setHotkeyScopeTab] = (0, import_react.useState)(() => config.mode === "local" ? "local" : "single");
@@ -13394,7 +13414,7 @@ function TitleScreen({ config, hotkeys, touchMode, showTouchControls, gamepadCou
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "flex items-center justify-between gap-2",
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-						className: "font-display text-2xl font-extrabold uppercase tracking-wide text-white",
+						className: "font-display text-xl sm:text-2xl font-extrabold uppercase tracking-wide text-white whitespace-nowrap",
 						children: "Match Setup"
 					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "flex items-center gap-2",
@@ -13748,6 +13768,88 @@ function TitleScreen({ config, hotkeys, touchMode, showTouchControls, gamepadCou
 									children: label
 								}, `touch-mode-${modeVal}`))
 							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex flex-col gap-2 p-3 rounded-lg bg-slate-900/90 border border-slate-800",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "text-xs font-bold text-slate-200 uppercase tracking-wider",
+									children: "Touch HUD Layout & Style"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-xs text-slate-300",
+										children: "Layout Preset"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "flex items-center gap-1 p-0.5 rounded bg-slate-950 border border-slate-800",
+										children: [
+											["standard", "Standard"],
+											["lefty", "Lefty Swap"],
+											["compact", "Compact"]
+										].map(([preset, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: () => onChangeTouchLayout({
+												...touchLayout,
+												layoutPreset: preset,
+												stickSide: preset === "lefty" ? "right" : "left"
+											}),
+											className: `px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${touchLayout.layoutPreset === preset ? "bg-blue-600 text-white" : "text-slate-300 hover:text-white"}`,
+											children: label
+										}, `preset-${preset}`))
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between gap-3",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-xs text-slate-300",
+										children: [
+											"Size / Scale (",
+											Math.round(touchLayout.scale * 100),
+											"%)"
+										]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "range",
+										min: "0.75",
+										max: "1.35",
+										step: "0.05",
+										value: touchLayout.scale,
+										onChange: (e) => onChangeTouchLayout({
+											...touchLayout,
+											scale: parseFloat(e.target.value)
+										}),
+										className: "w-32 accent-amber-500 cursor-pointer"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between gap-3",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-xs text-slate-300",
+										children: [
+											"Opacity (",
+											Math.round(touchLayout.opacity * 100),
+											"%)"
+										]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "range",
+										min: "0.4",
+										max: "1.0",
+										step: "0.05",
+										value: touchLayout.opacity,
+										onChange: (e) => onChangeTouchLayout({
+											...touchLayout,
+											opacity: parseFloat(e.target.value)
+										}),
+										className: "w-32 accent-amber-500 cursor-pointer"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: onStartTouchEditMatch,
+									className: "w-full mt-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-display text-sm font-bold uppercase tracking-wider transition-colors cursor-pointer shadow",
+									children: "Edit & Test Touch HUD Layout"
+								})
+							]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "rounded-lg bg-slate-900/75 border border-slate-800 px-2.5 py-2 flex flex-col gap-1",
@@ -14287,6 +14389,55 @@ var TouchInputBuffer = class {
 	}
 };
 var TOUCH_MODE_STORAGE_KEY = "skyline_brawl_touch_mode_v1";
+var DEFAULT_TOUCH_LAYOUT = {
+	scale: 1,
+	opacity: .85,
+	stickSide: "left",
+	layoutPreset: "standard",
+	stickOffset: {
+		x: 0,
+		y: 0
+	},
+	actionsOffset: {
+		x: 0,
+		y: 0
+	}
+};
+var TOUCH_LAYOUT_STORAGE_KEY = "skyline_brawl_touch_layout_v1";
+function loadTouchLayout() {
+	if (typeof window === "undefined" || !window.localStorage) return { ...DEFAULT_TOUCH_LAYOUT };
+	try {
+		const raw = window.localStorage.getItem(TOUCH_LAYOUT_STORAGE_KEY);
+		if (raw) {
+			const parsed = JSON.parse(raw);
+			return {
+				scale: typeof parsed.scale === "number" ? Math.min(1.35, Math.max(.75, parsed.scale)) : DEFAULT_TOUCH_LAYOUT.scale,
+				opacity: typeof parsed.opacity === "number" ? Math.min(1, Math.max(.4, parsed.opacity)) : DEFAULT_TOUCH_LAYOUT.opacity,
+				stickSide: parsed.stickSide === "right" ? "right" : "left",
+				layoutPreset: [
+					"standard",
+					"lefty",
+					"compact"
+				].includes(parsed.layoutPreset) ? parsed.layoutPreset : DEFAULT_TOUCH_LAYOUT.layoutPreset,
+				stickOffset: {
+					x: typeof parsed.stickOffset?.x === "number" ? parsed.stickOffset.x : 0,
+					y: typeof parsed.stickOffset?.y === "number" ? parsed.stickOffset.y : 0
+				},
+				actionsOffset: {
+					x: typeof parsed.actionsOffset?.x === "number" ? parsed.actionsOffset.x : 0,
+					y: typeof parsed.actionsOffset?.y === "number" ? parsed.actionsOffset.y : 0
+				}
+			};
+		}
+	} catch {}
+	return { ...DEFAULT_TOUCH_LAYOUT };
+}
+function saveTouchLayout(layout) {
+	if (typeof window === "undefined" || !window.localStorage) return;
+	try {
+		window.localStorage.setItem(TOUCH_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+	} catch {}
+}
 function loadTouchControlMode() {
 	if (typeof window === "undefined" || !window.localStorage) return "auto";
 	try {
@@ -14311,9 +14462,17 @@ function detectTouchCapability() {
 	return false;
 }
 // src/components/TouchControls.tsx
-function TouchControls({ touchInput, onUnlockAudio }) {
+function TouchControls({ touchInput, layout, isEditing = false, onUpdateLayout, onUnlockAudio }) {
 	const stickRef = (0, import_react.useRef)(null);
 	const stickPointerIdRef = (0, import_react.useRef)(null);
+	const dragPointerIdRef = (0, import_react.useRef)(null);
+	const dragTargetRef = (0, import_react.useRef)(null);
+	const dragStartRef = (0, import_react.useRef)({
+		x: 0,
+		y: 0,
+		startOffsetX: 0,
+		startOffsetY: 0
+	});
 	const [puckOffset, setPuckOffset] = (0, import_react.useState)({
 		x: 0,
 		y: 0
@@ -14347,7 +14506,7 @@ function TouchControls({ touchInput, onUnlockAudio }) {
 		const rect = el.getBoundingClientRect();
 		const cx = rect.left + rect.width * .5;
 		const cy = rect.top + rect.height * .5;
-		const res = computeTouchStickDirections(clientX - cx, clientY - cy, 40, 13, 19);
+		const res = computeTouchStickDirections(clientX - cx, clientY - cy, 40 * layout.scale, 13, 19);
 		setPuckOffset({
 			x: res.clampedX,
 			y: res.clampedY
@@ -14375,6 +14534,7 @@ function TouchControls({ touchInput, onUnlockAudio }) {
 		touchInput.setStick(false, false, false, false);
 	};
 	const handleActionDown = (action, e) => {
+		if (isEditing) return;
 		e.preventDefault();
 		e.stopPropagation();
 		onUnlockAudio?.();
@@ -14390,6 +14550,7 @@ function TouchControls({ touchInput, onUnlockAudio }) {
 		touchInput.pressAction(action);
 	};
 	const handleActionUp = (action, e) => {
+		if (isEditing) return;
 		e.preventDefault();
 		if (actionPointerMapRef.current[action] !== e.pointerId) return;
 		actionPointerMapRef.current[action] = null;
@@ -14399,111 +14560,228 @@ function TouchControls({ touchInput, onUnlockAudio }) {
 		}));
 		touchInput.releaseAction(action);
 	};
+	const startDragging = (target, e) => {
+		if (!isEditing) return;
+		e.preventDefault();
+		e.stopPropagation();
+		dragPointerIdRef.current = e.pointerId;
+		dragTargetRef.current = target;
+		const currentOffset = target === "stick" ? layout.stickOffset : layout.actionsOffset;
+		dragStartRef.current = {
+			x: e.clientX,
+			y: e.clientY,
+			startOffsetX: currentOffset.x,
+			startOffsetY: currentOffset.y
+		};
+		try {
+			e.currentTarget.setPointerCapture(e.pointerId);
+		} catch {}
+	};
+	const onDragMove = (e) => {
+		if (!isEditing || dragPointerIdRef.current !== e.pointerId || !dragTargetRef.current) return;
+		e.preventDefault();
+		const dx = e.clientX - dragStartRef.current.x;
+		const dy = e.clientY - dragStartRef.current.y;
+		const nextOffset = {
+			x: dragStartRef.current.startOffsetX + dx,
+			y: dragStartRef.current.startOffsetY + dy
+		};
+		if (onUpdateLayout) {
+			if (dragTargetRef.current === "stick") onUpdateLayout({
+				...layout,
+				stickOffset: nextOffset
+			});
+			else onUpdateLayout({
+				...layout,
+				actionsOffset: nextOffset
+			});
+		}
+	};
+	const endDragging = (e) => {
+		if (dragPointerIdRef.current !== e.pointerId) return;
+		dragPointerIdRef.current = null;
+		dragTargetRef.current = null;
+		try {
+			e.currentTarget.releasePointerCapture(e.pointerId);
+		} catch {}
+	};
+	const isLefty = layout.stickSide === "right";
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		"data-testid": "touch-controls",
-		className: "fixed inset-x-0 bottom-0 z-20 pointer-events-none flex items-end justify-between px-4 pb-4 sm:px-7 sm:pb-6 select-none",
+		className: "fixed inset-x-0 bottom-0 z-25 pointer-events-none flex flex-col justify-end select-none",
 		style: { paddingBottom: "max(16px, env(safe-area-inset-bottom))" },
-		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-			ref: stickRef,
-			role: "application",
-			"aria-label": "Movement thumbstick",
-			onPointerDown: (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				onUnlockAudio?.();
-				if (stickPointerIdRef.current !== null) return;
-				stickPointerIdRef.current = e.pointerId;
-				try {
-					e.currentTarget.setPointerCapture(e.pointerId);
-				} catch {}
-				updateStickFromClient(e.clientX, e.clientY);
-			},
-			onPointerMove: (e) => {
-				if (stickPointerIdRef.current !== e.pointerId) return;
-				e.preventDefault();
-				updateStickFromClient(e.clientX, e.clientY);
-			},
-			onPointerUp: (e) => {
-				if (stickPointerIdRef.current !== e.pointerId) return;
-				e.preventDefault();
-				resetStick();
-			},
-			onPointerCancel: (e) => {
-				if (stickPointerIdRef.current !== e.pointerId) return;
-				resetStick();
-			},
-			className: "pointer-events-auto touch-none relative w-32 h-32 rounded-full bg-slate-950/60 border-2 border-slate-500/55 shadow-[0_8px_24px_rgba(0,0,0,0.45)] flex items-center justify-center",
-			children: [
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					"aria-hidden": "true",
-					className: `absolute top-2 text-[10px] font-bold ${stickDirs.up ? "text-amber-300" : "text-slate-400/70"}`,
-					children: "▲"
+		children: [isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "absolute top-4 inset-x-4 z-30 pointer-events-auto bg-amber-500/95 text-slate-950 font-display font-extrabold text-sm sm:text-base py-2 px-4 rounded-xl shadow-2xl flex items-center justify-between gap-3 text-center",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "EDITING TOUCH HUD • Drag Joystick or Action Cluster to reposition" }), onUpdateLayout && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+				type: "button",
+				onClick: () => onUpdateLayout({
+					...layout,
+					stickOffset: {
+						x: 0,
+						y: 0
+					},
+					actionsOffset: {
+						x: 0,
+						y: 0
+					}
 				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					"aria-hidden": "true",
-					className: `absolute bottom-2 text-[10px] font-bold ${stickDirs.down ? "text-amber-300" : "text-slate-400/70"}`,
-					children: "▼"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					"aria-hidden": "true",
-					className: `absolute left-2.5 text-[10px] font-bold ${stickDirs.left ? "text-amber-300" : "text-slate-400/70"}`,
-					children: "◀"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-					"aria-hidden": "true",
-					className: `absolute right-2.5 text-[10px] font-bold ${stickDirs.right ? "text-amber-300" : "text-slate-400/70"}`,
-					children: "▶"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-					"aria-hidden": "true",
-					style: { transform: `translate3d(${puckOffset.x}px, ${puckOffset.y}px, 0)` },
-					className: "w-12 h-12 rounded-full bg-slate-100/85 border-2 border-white shadow-lg pointer-events-none transition-transform duration-75"
-				})
-			]
+				className: "px-3 py-1 rounded bg-slate-950 text-amber-300 text-xs font-bold uppercase tracking-wider hover:bg-slate-900 cursor-pointer",
+				children: "Reset Pos"
+			})]
 		}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-			className: "pointer-events-auto touch-none relative w-44 h-36",
-			children: [
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					type: "button",
-					tabIndex: -1,
-					"aria-label": "Touch Shield",
-					onPointerDown: (e) => handleActionDown("shield", e),
-					onPointerUp: (e) => handleActionUp("shield", e),
-					onPointerCancel: (e) => handleActionUp("shield", e),
-					className: `touch-none absolute left-1 top-1 w-14 h-14 rounded-full border-2 font-display text-xs font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.shield ? "bg-slate-600 border-white text-white scale-95" : "bg-slate-900/75 border-slate-400/70 text-slate-200"}`,
-					children: "SHD"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					type: "button",
-					tabIndex: -1,
-					"aria-label": "Touch Jump",
-					onPointerDown: (e) => handleActionDown("jump", e),
-					onPointerUp: (e) => handleActionUp("jump", e),
-					onPointerCancel: (e) => handleActionUp("jump", e),
-					className: `touch-none absolute right-0 top-0 w-16 h-16 rounded-full border-2 font-display text-sm font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.jump ? "bg-emerald-400 border-white text-slate-950 scale-95" : "bg-emerald-600/80 border-emerald-300/80 text-white"}`,
-					children: "JMP"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					type: "button",
-					tabIndex: -1,
-					"aria-label": "Touch Attack",
-					onPointerDown: (e) => handleActionDown("attack", e),
-					onPointerUp: (e) => handleActionUp("attack", e),
-					onPointerCancel: (e) => handleActionUp("attack", e),
-					className: `touch-none absolute left-0 bottom-0 w-16 h-16 rounded-full border-2 font-display text-sm font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.attack ? "bg-amber-400 border-white text-slate-950 scale-95" : "bg-red-600/85 border-red-300/85 text-white"}`,
-					children: "ATK"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					type: "button",
-					tabIndex: -1,
-					"aria-label": "Touch Special",
-					onPointerDown: (e) => handleActionDown("special", e),
-					onPointerUp: (e) => handleActionUp("special", e),
-					onPointerCancel: (e) => handleActionUp("special", e),
-					className: `touch-none absolute right-2 bottom-2 w-15 h-15 rounded-full border-2 font-display text-sm font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.special ? "bg-cyan-300 border-white text-slate-950 scale-95" : "bg-blue-600/85 border-cyan-300/80 text-white"}`,
-					children: "SPC"
+			className: `pointer-events-none flex items-end justify-between px-4 sm:px-7 pb-2 sm:pb-4 ${isLefty ? "flex-row-reverse" : "flex-row"}`,
+			style: { opacity: layout.opacity },
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				style: {
+					transform: `translate3d(${layout.stickOffset.x}px, ${layout.stickOffset.y}px, 0) scale(${layout.scale})`,
+					transformOrigin: "bottom left"
+				},
+				className: "transition-transform duration-75",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					ref: stickRef,
+					role: "application",
+					"aria-label": "Movement thumbstick",
+					onPointerDown: (e) => {
+						if (isEditing) {
+							startDragging("stick", e);
+							return;
+						}
+						e.preventDefault();
+						e.stopPropagation();
+						onUnlockAudio?.();
+						if (stickPointerIdRef.current !== null) return;
+						stickPointerIdRef.current = e.pointerId;
+						try {
+							e.currentTarget.setPointerCapture(e.pointerId);
+						} catch {}
+						updateStickFromClient(e.clientX, e.clientY);
+					},
+					onPointerMove: (e) => {
+						if (isEditing) {
+							onDragMove(e);
+							return;
+						}
+						if (stickPointerIdRef.current !== e.pointerId) return;
+						e.preventDefault();
+						updateStickFromClient(e.clientX, e.clientY);
+					},
+					onPointerUp: (e) => {
+						if (isEditing) {
+							endDragging(e);
+							return;
+						}
+						if (stickPointerIdRef.current !== e.pointerId) return;
+						e.preventDefault();
+						resetStick();
+					},
+					onPointerCancel: (e) => {
+						if (isEditing) {
+							endDragging(e);
+							return;
+						}
+						if (stickPointerIdRef.current !== e.pointerId) return;
+						resetStick();
+					},
+					className: `pointer-events-auto touch-none relative w-32 h-32 rounded-full bg-slate-950/70 border-2 border-slate-500/55 shadow-[0_8px_24px_rgba(0,0,0,0.45)] flex items-center justify-center ${isEditing ? "cursor-move ring-4 ring-amber-400/80 animate-pulse" : ""}`,
+					children: [isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "absolute inset-0 flex items-center justify-center font-display font-extrabold text-xs text-amber-300 bg-slate-950/80 rounded-full",
+						children: "DRAG STICK"
+					}), !isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							"aria-hidden": "true",
+							className: `absolute top-2 text-[10px] font-bold ${stickDirs.up ? "text-amber-300" : "text-slate-400/70"}`,
+							children: "▲"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							"aria-hidden": "true",
+							className: `absolute bottom-2 text-[10px] font-bold ${stickDirs.down ? "text-amber-300" : "text-slate-400/70"}`,
+							children: "▼"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							"aria-hidden": "true",
+							className: `absolute left-2.5 text-[10px] font-bold ${stickDirs.left ? "text-amber-300" : "text-slate-400/70"}`,
+							children: "◀"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							"aria-hidden": "true",
+							className: `absolute right-2.5 text-[10px] font-bold ${stickDirs.right ? "text-amber-300" : "text-slate-400/70"}`,
+							children: "▶"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							"aria-hidden": "true",
+							style: { transform: `translate3d(${puckOffset.x}px, ${puckOffset.y}px, 0)` },
+							className: "w-12 h-12 rounded-full bg-slate-100/85 border-2 border-white shadow-lg pointer-events-none transition-transform duration-75"
+						})
+					] })]
 				})
-			]
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				style: {
+					transform: `translate3d(${layout.actionsOffset.x}px, ${layout.actionsOffset.y}px, 0) scale(${layout.scale})`,
+					transformOrigin: "bottom right"
+				},
+				className: "transition-transform duration-75",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					onPointerDown: (e) => {
+						if (isEditing) startDragging("actions", e);
+					},
+					onPointerMove: (e) => {
+						if (isEditing) onDragMove(e);
+					},
+					onPointerUp: (e) => {
+						if (isEditing) endDragging(e);
+					},
+					onPointerCancel: (e) => {
+						if (isEditing) endDragging(e);
+					},
+					className: `pointer-events-auto touch-none relative w-44 h-36 ${isEditing ? "cursor-move ring-4 ring-amber-400/80 rounded-xl bg-slate-950/60 p-2 animate-pulse flex items-center justify-center" : ""}`,
+					children: [
+						isEditing && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "absolute z-30 font-display font-extrabold text-xs text-amber-300 bg-slate-950/90 py-1 px-3 rounded-md shadow",
+							children: "DRAG CLUSTER"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							tabIndex: -1,
+							"aria-label": "Touch Shield",
+							onPointerDown: (e) => handleActionDown("shield", e),
+							onPointerUp: (e) => handleActionUp("shield", e),
+							onPointerCancel: (e) => handleActionUp("shield", e),
+							className: `touch-none absolute left-1 top-1 w-14 h-14 rounded-full border-2 font-display text-xs font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.shield ? "bg-slate-600 border-white text-white scale-95" : "bg-slate-900/75 border-slate-400/70 text-slate-200"}`,
+							children: "SHD"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							tabIndex: -1,
+							"aria-label": "Touch Jump",
+							onPointerDown: (e) => handleActionDown("jump", e),
+							onPointerUp: (e) => handleActionUp("jump", e),
+							onPointerCancel: (e) => handleActionUp("jump", e),
+							className: `touch-none absolute right-0 top-0 w-16 h-16 rounded-full border-2 font-display text-sm font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.jump ? "bg-emerald-400 border-white text-slate-950 scale-95" : "bg-emerald-600/80 border-emerald-300/80 text-white"}`,
+							children: "JMP"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							tabIndex: -1,
+							"aria-label": "Touch Attack",
+							onPointerDown: (e) => handleActionDown("attack", e),
+							onPointerUp: (e) => handleActionUp("attack", e),
+							onPointerCancel: (e) => handleActionUp("attack", e),
+							className: `touch-none absolute left-0 bottom-0 w-16 h-16 rounded-full border-2 font-display text-sm font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.attack ? "bg-amber-400 border-white text-slate-950 scale-95" : "bg-red-600/85 border-red-300/85 text-white"}`,
+							children: "ATK"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							tabIndex: -1,
+							"aria-label": "Touch Special",
+							onPointerDown: (e) => handleActionDown("special", e),
+							onPointerUp: (e) => handleActionUp("special", e),
+							onPointerCancel: (e) => handleActionUp("special", e),
+							className: `touch-none absolute right-2 bottom-2 w-15 h-15 rounded-full border-2 font-display text-sm font-extrabold uppercase tracking-wider shadow-lg flex items-center justify-center transition-transform ${heldActions.special ? "bg-cyan-300 border-white text-slate-950 scale-95" : "bg-blue-600/85 border-cyan-300/80 text-white"}`,
+							children: "SPC"
+						})
+					]
+				})
+			})]
 		})]
 	});
 }
@@ -22582,6 +22860,8 @@ function App() {
 	const [hotkeys, setHotkeys] = (0, import_react.useState)(() => loadHotkeySettings());
 	const hotkeysRef = (0, import_react.useRef)(hotkeys);
 	const [touchMode, setTouchMode] = (0, import_react.useState)(() => loadTouchControlMode());
+	const [touchLayout, setTouchLayout] = (0, import_react.useState)(() => loadTouchLayout());
+	const [isEditingTouchLayout, setIsEditingTouchLayout] = (0, import_react.useState)(false);
 	const [touchDetected, setTouchDetected] = (0, import_react.useState)(() => detectTouchCapability());
 	const [gamepadCount, setGamepadCount] = (0, import_react.useState)(() => getConnectedGamepads().length);
 	const [screenState, setScreenState] = (0, import_react.useState)(() => {
@@ -22895,6 +23175,16 @@ function App() {
 		setTouchMode(next);
 		saveTouchControlMode(next);
 	}, []);
+	const handleChangeTouchLayout = (0, import_react.useCallback)((next) => {
+		setTouchLayout(next);
+		saveTouchLayout(next);
+	}, []);
+	const handleStartTouchEditMatch = (0, import_react.useCallback)(() => {
+		setTouchMode("on");
+		saveTouchControlMode("on");
+		setIsEditingTouchLayout(true);
+		handleStartMatch();
+	}, [handleStartMatch]);
 	const handleStartMatch = (0, import_react.useCallback)((overrideConfig) => {
 		const nextConfig = overrideConfig ?? configRef.current;
 		if (overrideConfig) {
@@ -23202,6 +23492,7 @@ function App() {
 				config,
 				hotkeys,
 				touchMode,
+				touchLayout,
 				showTouchControls,
 				gamepadCount,
 				menuView,
@@ -23217,6 +23508,8 @@ function App() {
 				onChangeConfig: handleChangeConfig,
 				onChangeHotkeys: handleChangeHotkeys,
 				onChangeTouchMode: handleChangeTouchMode,
+				onChangeTouchLayout: handleChangeTouchLayout,
+				onStartTouchEditMatch: handleStartTouchEditMatch,
 				onChangeQuickFighter: handleChangeQuickFighter,
 				onStartMatch: handleStartMatch,
 				onQuickPlayOnline: handleQuickPlayOnline,
@@ -23239,13 +23532,19 @@ function App() {
 			}),
 			screenState === "playing" && showTouchControls && engineInstance && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TouchControls, {
 				touchInput: engineInstance.touchInput,
+				layout: touchLayout,
+				isEditing: isEditingTouchLayout,
+				onUpdateLayout: handleChangeTouchLayout,
 				onUnlockAudio: () => engineInstance.audio.unlock()
 			}),
 			screenState === "paused" && !disconnectNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PauseModal, {
 				isOnline: isOnlineMatch,
 				controlSummary: pauseControlSummary,
+				showTouchEdit: showTouchControls,
+				isEditingTouch: isEditingTouchLayout,
 				onResume: handleResume,
 				onRestart: handleRestart,
+				onToggleTouchEdit: () => setIsEditingTouchLayout((cur) => !cur),
 				onReturnTitle: handleReturnTitle
 			}),
 			screenState === "gameover" && matchResult && !disconnectNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GameOverModal, {

@@ -4,16 +4,22 @@ import { FighterEmblem } from './FighterEmblem';
 interface PauseModalProps {
   isOnline?: boolean;
   controlSummary?: string;
+  showTouchEdit?: boolean;
+  isEditingTouch?: boolean;
   onResume: () => void;
   onRestart: () => void;
+  onToggleTouchEdit?: () => void;
   onReturnTitle: () => void;
 }
 
 export function PauseModal({
   isOnline = false,
   controlSummary,
+  showTouchEdit = false,
+  isEditingTouch = false,
   onResume,
   onRestart,
+  onToggleTouchEdit,
   onReturnTitle,
 }: PauseModalProps) {
   return (
@@ -47,6 +53,19 @@ export function PauseModal({
           >
             Resume Match
           </button>
+          {showTouchEdit && onToggleTouchEdit && (
+            <button
+              type="button"
+              onClick={onToggleTouchEdit}
+              className={`w-full py-2.5 px-4 rounded-lg font-bold text-sm border transition-colors cursor-pointer ${
+                isEditingTouch
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400'
+                  : 'bg-blue-600/90 hover:bg-blue-500 text-white border-blue-500'
+              }`}
+            >
+              {isEditingTouch ? 'Done Editing Touch HUD' : 'Customize / Edit Touch HUD'}
+            </button>
+          )}
           {!isOnline && (
             <button
               type="button"

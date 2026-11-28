@@ -22,8 +22,11 @@ import { P2PTransport } from './game/p2p';
 import {
   detectTouchCapability,
   loadTouchControlMode,
+  loadTouchLayout,
   saveTouchControlMode,
+  saveTouchLayout,
   TouchControlMode,
+  TouchLayoutConfig,
 } from './game/touchInput';
 import {
   FighterId,
@@ -106,6 +109,8 @@ export default function App() {
   const hotkeysRef = useRef<HotkeySettings>(hotkeys);
 
   const [touchMode, setTouchMode] = useState<TouchControlMode>(() => loadTouchControlMode());
+  const [touchLayout, setTouchLayout] = useState<TouchLayoutConfig>(() => loadTouchLayout());
+  const [isEditingTouchLayout, setIsEditingTouchLayout] = useState(false);
   const [touchDetected, setTouchDetected] = useState<boolean>(() => detectTouchCapability());
   const [gamepadCount, setGamepadCount] = useState<number>(() => getConnectedGamepads().length);
 
@@ -492,6 +497,11 @@ export default function App() {
     saveTouchControlMode(next);
   }, []);
 
+  const handleChangeTouchLayout = useCallback((next: TouchLayoutConfig) => {
+    setTouchLayout(next);
+    saveTouchLayout(next);
+  }, []);
+
   const handleStartMatch = useCallback((overrideConfig?: MatchConfig) => {
     const nextConfig = overrideConfig ?? configRef.current;
     if (overrideConfig) {
@@ -505,6 +515,13 @@ export default function App() {
     setScreenState('playing');
     engineRef.current?.startNewMatch(nextConfig, false);
   }, []);
+
+  const handleStartTouchEditMatch = useCallback(() => {
+    setTouchMode('on');
+    saveTouchControlMode('on');
+    setIsEditingTouchLayout(true);
+    handleStartMatch();
+  }, [handleStartMatch]);
 
   const handleCancelQuickMatch = useCallback(() => {
     clearQuickTimers();
@@ -864,6 +881,7 @@ export default function App() {
           config={config}
           hotkeys={hotkeys}
           touchMode={touchMode}
+          touchLayout={touchLayout}
           showTouchControls={showTouchControls}
           gamepadCount={gamepadCount}
           menuView={menuView}
@@ -879,6 +897,8 @@ export default function App() {
           onChangeConfig={handleChangeConfig}
           onChangeHotkeys={handleChangeHotkeys}
           onChangeTouchMode={handleChangeTouchMode}
+          onChangeTouchLayout={handleChangeTouchLayout}
+          onStartTouchEditMatch={handleStartTouchEditMatch}
           onChangeQuickFighter={handleChangeQuickFighter}
           onStartMatch={handleStartMatch}
           onQuickPlayOnline={handleQuickPlayOnline}
@@ -907,6 +927,9 @@ export default function App() {
       {screenState === 'playing' && showTouchControls && engineInstance && (
         <TouchControls
           touchInput={engineInstance.touchInput}
+          layout={touchLayout}
+          isEditing={isEditingTouchLayout}
+          onUpdateLayout={handleChangeTouchLayout}
           onUnlockAudio={() => engineInstance.audio.unlock()}
         />
       )}
@@ -915,8 +938,11 @@ export default function App() {
         <PauseModal
           isOnline={isOnlineMatch}
           controlSummary={pauseControlSummary}
+          showTouchEdit={showTouchControls}
+          isEditingTouch={isEditingTouchLayout}
           onResume={handleResume}
           onRestart={handleRestart}
+          onToggleTouchEdit={() => setIsEditingTouchLayout((cur) => !cur)}
           onReturnTitle={handleReturnTitle}
         />
       )}
