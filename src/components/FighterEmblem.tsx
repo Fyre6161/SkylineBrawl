@@ -45,17 +45,54 @@ export function FighterEmblem({ id, className = 'w-9 h-9' }: FighterEmblemProps)
     );
   }
 
+  if (id === 'titan') {
+    return (
+      <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="16" fill="#78350F" stroke="#0F172A" strokeWidth="2.5" />
+        <path
+          d="M9 14 L7 7 L13 12 H23 L29 7 L27 14 L26 26 H10 Z"
+          fill="#475569"
+          stroke="#0F172A"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        <rect x="12" y="17" width="12" height="4" fill="#FEF08A" stroke="#0F172A" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+
+  if (id === 'volt') {
+    return (
+      <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
+        <circle cx="18" cy="18" r="16" fill="#4C1D95" stroke="#0F172A" strokeWidth="2.5" />
+        {/* Crackling lightning bolt */}
+        <path
+          d="M20 5 L9 18 L16 18 L13 31 L26 15 L19 15 Z"
+          fill="#FACC15"
+          stroke="#0F172A"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        {/* Glow spark */}
+        <polygon points="17,16 19,13 21,16 19,19" fill="#FFFFFF" />
+      </svg>
+    );
+  }
+
+  // frost
   return (
     <svg viewBox="0 0 36 36" className={className} aria-hidden="true">
-      <circle cx="18" cy="18" r="16" fill="#78350F" stroke="#0F172A" strokeWidth="2.5" />
+      <circle cx="18" cy="18" r="16" fill="#164E63" stroke="#0F172A" strokeWidth="2.5" />
+      {/* 6-point crystal diamond star */}
       <path
-        d="M9 14 L7 7 L13 12 H23 L29 7 L27 14 L26 26 H10 Z"
-        fill="#475569"
+        d="M18 6 L21 14 L29 11 L23 18 L29 25 L21 22 L18 30 L15 22 L7 25 L13 18 L7 11 L15 14 Z"
+        fill="#06B6D4"
         stroke="#0F172A"
-        strokeWidth="1.8"
+        strokeWidth="1.6"
         strokeLinejoin="round"
       />
-      <rect x="12" y="17" width="12" height="4" fill="#FEF08A" stroke="#0F172A" strokeWidth="1.2" />
+      {/* Inner ice core */}
+      <polygon points="18,12 22,18 18,24 14,18" fill="#E0F2FE" stroke="#0891B2" strokeWidth="1" />
     </svg>
   );
 }

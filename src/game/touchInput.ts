@@ -134,10 +134,10 @@ export const DEFAULT_TOUCH_LAYOUT: TouchLayoutConfig = {
   stickSide: 'left',
   layoutPreset: 'standard',
   stickOffset: { x: 0, y: 0 },
-  jumpOffset: { x: 0, y: 0 },
-  attackOffset: { x: 0, y: 0 },
-  specialOffset: { x: 0, y: 0 },
-  shieldOffset: { x: 0, y: 0 },
+  jumpOffset: { x: -8, y: -25 },
+  attackOffset: { x: -115, y: 55 },
+  specialOffset: { x: 20, y: 35 },
+  shieldOffset: { x: -95, y: -18 },
 };
 
 export const TOUCH_LAYOUT_STORAGE_KEY = 'skyline_brawl_touch_layout_v1';
@@ -158,20 +158,20 @@ export function loadTouchLayout(): TouchLayoutConfig {
           y: typeof parsed.stickOffset?.y === 'number' ? parsed.stickOffset.y : 0,
         },
         jumpOffset: {
-          x: typeof parsed.jumpOffset?.x === 'number' ? parsed.jumpOffset.x : 0,
-          y: typeof parsed.jumpOffset?.y === 'number' ? parsed.jumpOffset.y : 0,
+          x: typeof parsed.jumpOffset?.x === 'number' ? parsed.jumpOffset.x : DEFAULT_TOUCH_LAYOUT.jumpOffset.x,
+          y: typeof parsed.jumpOffset?.y === 'number' ? parsed.jumpOffset.y : DEFAULT_TOUCH_LAYOUT.jumpOffset.y,
         },
         attackOffset: {
-          x: typeof parsed.attackOffset?.x === 'number' ? parsed.attackOffset.x : 0,
-          y: typeof parsed.attackOffset?.y === 'number' ? parsed.attackOffset.y : 0,
+          x: typeof parsed.attackOffset?.x === 'number' ? parsed.attackOffset.x : DEFAULT_TOUCH_LAYOUT.attackOffset.x,
+          y: typeof parsed.attackOffset?.y === 'number' ? parsed.attackOffset.y : DEFAULT_TOUCH_LAYOUT.attackOffset.y,
         },
         specialOffset: {
-          x: typeof parsed.specialOffset?.x === 'number' ? parsed.specialOffset.x : 0,
-          y: typeof parsed.specialOffset?.y === 'number' ? parsed.specialOffset.y : 0,
+          x: typeof parsed.specialOffset?.x === 'number' ? parsed.specialOffset.x : DEFAULT_TOUCH_LAYOUT.specialOffset.x,
+          y: typeof parsed.specialOffset?.y === 'number' ? parsed.specialOffset.y : DEFAULT_TOUCH_LAYOUT.specialOffset.y,
         },
         shieldOffset: {
-          x: typeof parsed.shieldOffset?.x === 'number' ? parsed.shieldOffset.x : 0,
-          y: typeof parsed.shieldOffset?.y === 'number' ? parsed.shieldOffset.y : 0,
+          x: typeof parsed.shieldOffset?.x === 'number' ? parsed.shieldOffset.x : DEFAULT_TOUCH_LAYOUT.shieldOffset.x,
+          y: typeof parsed.shieldOffset?.y === 'number' ? parsed.shieldOffset.y : DEFAULT_TOUCH_LAYOUT.shieldOffset.y,
         },
       };
     }

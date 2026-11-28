@@ -24,7 +24,7 @@ import {
 } from '../game/types';
 import { FighterEmblem } from './FighterEmblem';
 
-export type MenuView = 'main' | 'setup' | 'online';
+export type MenuView = 'main' | 'setup' | 'online' | 'hud_editor';
 export type OnlineTab = 'quick' | 'host' | 'join';
 export type SetupTab = 'match' | 'hotkeys';
 
@@ -59,7 +59,7 @@ interface TitleScreenProps {
   onChangeHotkeys: (next: HotkeySettings) => void;
   onChangeTouchMode: (mode: TouchControlMode) => void;
   onChangeTouchLayout: (layout: TouchLayoutConfig) => void;
-  onStartTouchEditMatch: () => void;
+  onResetTouchLayout: () => void;
   onChangeQuickFighter: (fighter: FighterId) => void;
   onStartMatch: (overrideConfig?: MatchConfig) => void;
   onQuickPlayOnline: () => void;
@@ -142,7 +142,7 @@ export function TitleScreen({
   onChangeHotkeys,
   onChangeTouchMode,
   onChangeTouchLayout,
-  onStartTouchEditMatch,
+  onResetTouchLayout,
   onChangeQuickFighter,
   onStartMatch,
   onQuickPlayOnline,
@@ -526,6 +526,54 @@ export function TitleScreen({
                 </div>
               </div>
 
+              {/* Selected Fighter Specialized Moves Showcase */}
+              {(() => {
+                const spec = FIGHTERS[config.p1Fighter];
+                return (
+                  <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800 flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <FighterEmblem id={spec.id} className="w-6 h-6 shrink-0" />
+                        <div>
+                          <span className="text-xs font-extrabold text-white tracking-wide uppercase">
+                            {spec.name}
+                          </span>
+                          <span className="text-[11px] text-slate-400 ml-2">
+                            {spec.archetype}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-mono-tabular text-slate-400">
+                        Weight: {spec.weight.toFixed(2)}x
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-300 italic leading-snug">
+                      &ldquo;{spec.tagline}&rdquo;
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-800/80 text-[11px]">
+                      <div className="bg-slate-950/70 rounded px-2 py-1 border border-slate-800 flex items-center justify-between">
+                        <span className="text-amber-400 font-bold uppercase text-[10px]">Neutral Spec</span>
+                        <span className="text-slate-200 font-medium truncate max-w-[120px]">{spec.attacks.neutralSpecial.name}</span>
+                      </div>
+                      <div className="bg-slate-950/70 rounded px-2 py-1 border border-slate-800 flex items-center justify-between">
+                        <span className="text-amber-400 font-bold uppercase text-[10px]">Side Spec</span>
+                        <span className="text-slate-200 font-medium truncate max-w-[120px]">{spec.attacks.sideSpecial.name}</span>
+                      </div>
+                      <div className="bg-slate-950/70 rounded px-2 py-1 border border-slate-800 flex items-center justify-between">
+                        <span className="text-amber-400 font-bold uppercase text-[10px]">Up Spec</span>
+                        <span className="text-slate-200 font-medium truncate max-w-[120px]">{spec.attacks.upSpecial.name}</span>
+                      </div>
+                      <div className="bg-slate-950/70 rounded px-2 py-1 border border-slate-800 flex items-center justify-between">
+                        <span className="text-amber-400 font-bold uppercase text-[10px]">Down Spec</span>
+                        <span className="text-slate-200 font-medium truncate max-w-[120px]">{spec.attacks.downSpecial.name}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Stage & Difficulty */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
                 <div className="flex items-center gap-1.5">
@@ -900,10 +948,10 @@ export function TitleScreen({
 
                 <button
                   type="button"
-                  onClick={onStartTouchEditMatch}
-                  className="w-full mt-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-display text-sm font-bold uppercase tracking-wider transition-colors cursor-pointer shadow"
+                  onClick={() => onChangeMenuView('hud_editor')}
+                  className="w-full mt-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-display text-sm font-bold uppercase tracking-wider transition-colors cursor-pointer shadow"
                 >
-                  Edit & Test Touch HUD Layout
+                  Open Touch HUD Editor Page
                 </button>
               </div>
 
@@ -1067,7 +1115,7 @@ export function TitleScreen({
               {/* Fighter Select for Quick Play */}
               <div>
                 <div className="text-xs font-semibold text-slate-300 mb-2">Your Fighter</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                   {FIGHTER_LIST.map((f) => {
                     const selected = quickFighter === f.id;
                     return (
@@ -1088,6 +1136,14 @@ export function TitleScreen({
                       </button>
                     );
                   })}
+                </div>
+                <div className="mt-2 p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-300 italic truncate max-w-[280px]">
+                    &ldquo;{FIGHTERS[quickFighter].tagline}&rdquo;
+                  </span>
+                  <span className="text-amber-400 font-semibold ml-2 shrink-0">
+                    Spec: {FIGHTERS[quickFighter].attacks.neutralSpecial.name}
+                  </span>
                 </div>
               </div>
 
@@ -1357,6 +1413,116 @@ export function TitleScreen({
               </button>
             </>
           )}
+        </section>
+      )}
+
+      {menuView === 'hud_editor' && (
+        <section
+          aria-label="Touch HUD Editor"
+          className="pointer-events-auto mx-auto my-auto w-full max-w-[500px] max-h-[calc(100dvh-64px)] overflow-y-auto rounded-2xl bg-slate-950/96 border-2 border-amber-500/70 p-5 sm:p-6 shadow-2xl flex flex-col gap-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-extrabold uppercase tracking-wide text-amber-400">
+                Touch HUD Editor
+              </h2>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Drag any touch button or joystick directly on the screen to reposition it.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onChangeMenuView('setup')}
+              className="px-4 py-2 rounded-lg text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 transition-colors cursor-pointer shadow whitespace-nowrap"
+            >
+              Save & Exit
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3 p-3.5 rounded-xl bg-slate-900 border border-slate-800">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-200">Layout Preset</span>
+              <div className="flex items-center gap-1 p-0.5 rounded bg-slate-950 border border-slate-800">
+                {(
+                  [
+                    ['standard', 'Standard'],
+                    ['lefty', 'Lefty Swap'],
+                    ['compact', 'Compact'],
+                  ] as [TouchLayoutConfig['layoutPreset'], string][]
+                ).map(([preset, label]) => (
+                  <button
+                    key={`editor-preset-${preset}`}
+                    type="button"
+                    onClick={() =>
+                      onChangeTouchLayout({
+                        ...touchLayout,
+                        layoutPreset: preset,
+                        stickSide: preset === 'lefty' ? 'right' : 'left',
+                      })
+                    }
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
+                      touchLayout.layoutPreset === preset
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-slate-300">
+                Size Scale ({Math.round(touchLayout.scale * 100)}%)
+              </span>
+              <input
+                type="range"
+                min="0.75"
+                max="1.35"
+                step="0.05"
+                value={touchLayout.scale}
+                onChange={(e) =>
+                  onChangeTouchLayout({ ...touchLayout, scale: parseFloat(e.target.value) })
+                }
+                className="w-36 accent-amber-500 cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-slate-300">
+                Opacity ({Math.round(touchLayout.opacity * 100)}%)
+              </span>
+              <input
+                type="range"
+                min="0.4"
+                max="1.0"
+                step="0.05"
+                value={touchLayout.opacity}
+                onChange={(e) =>
+                  onChangeTouchLayout({ ...touchLayout, opacity: parseFloat(e.target.value) })
+                }
+                className="w-36 accent-amber-500 cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onResetTouchLayout}
+                className="flex-1 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold uppercase tracking-wider border border-slate-700 transition-colors cursor-pointer"
+              >
+                Reset Default Positions
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeMenuView('setup')}
+                className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer shadow"
+              >
+                Save Layout
+              </button>
+            </div>
+          </div>
         </section>
       )}
 

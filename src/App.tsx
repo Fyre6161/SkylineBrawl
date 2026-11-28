@@ -21,11 +21,13 @@ import { NetMessage, normalizeRoomCode, parseRoomFromSearch } from './game/netco
 import { P2PTransport } from './game/p2p';
 import {
   detectTouchCapability,
+  DEFAULT_TOUCH_LAYOUT,
   loadTouchControlMode,
   loadTouchLayout,
   saveTouchControlMode,
   saveTouchLayout,
   TouchControlMode,
+  TouchInputBuffer,
   TouchLayoutConfig,
 } from './game/touchInput';
 import {
@@ -502,6 +504,12 @@ export default function App() {
     saveTouchLayout(next);
   }, []);
 
+  const handleResetTouchLayout = useCallback(() => {
+    const next = { ...DEFAULT_TOUCH_LAYOUT };
+    setTouchLayout(next);
+    saveTouchLayout(next);
+  }, []);
+
   const handleStartMatch = useCallback((overrideConfig?: MatchConfig) => {
     const nextConfig = overrideConfig ?? configRef.current;
     if (overrideConfig) {
@@ -515,13 +523,6 @@ export default function App() {
     setScreenState('playing');
     engineRef.current?.startNewMatch(nextConfig, false);
   }, []);
-
-  const handleStartTouchEditMatch = useCallback(() => {
-    setTouchMode('on');
-    saveTouchControlMode('on');
-    setIsEditingTouchLayout(true);
-    handleStartMatch();
-  }, [handleStartMatch]);
 
   const handleCancelQuickMatch = useCallback(() => {
     clearQuickTimers();
@@ -872,9 +873,9 @@ export default function App() {
         : formatControlSummary(hotkeys, config.mode);
 
   return (
-    <main className="relative w-full h-full overflow-hidden bg-slate-950">
+    <main className="relative w-full h-full overflow-hidden bg-slate-950 touch-none select-none">
       {/* Isolated Canvas Mount */}
-      <div ref={mountRef} className="fixed inset-0" />
+      <div ref={mountRef} className="fixed inset-0 touch-none select-none" />
 
       {screenState === 'title' && (
         <TitleScreen
@@ -898,7 +899,7 @@ export default function App() {
           onChangeHotkeys={handleChangeHotkeys}
           onChangeTouchMode={handleChangeTouchMode}
           onChangeTouchLayout={handleChangeTouchLayout}
-          onStartTouchEditMatch={handleStartTouchEditMatch}
+          onResetTouchLayout={handleResetTouchLayout}
           onChangeQuickFighter={handleChangeQuickFighter}
           onStartMatch={handleStartMatch}
           onQuickPlayOnline={handleQuickPlayOnline}
@@ -909,6 +910,15 @@ export default function App() {
           onLeaveOnline={handleLeaveOnline}
           onGuestChoice={handleGuestChoice}
           onStartOnlineMatch={handleStartOnlineMatch}
+        />
+      )}
+
+      {menuView === 'hud_editor' && (
+        <TouchControls
+          touchInput={engineInstance ? engineInstance.touchInput : new TouchInputBuffer()}
+          layout={touchLayout}
+          isEditing={true}
+          onUpdateLayout={handleChangeTouchLayout}
         />
       )}
 

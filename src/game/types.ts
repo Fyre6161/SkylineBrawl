@@ -1,6 +1,6 @@
 export type GameScreenState = 'title' | 'playing' | 'paused' | 'gameover';
 
-export type FighterId = 'blaze' | 'gale' | 'titan';
+export type FighterId = 'blaze' | 'gale' | 'titan' | 'volt' | 'frost';
 export type StageId = 'sky_temple' | 'twin_pillars';
 export type GameMode = 'cpu' | 'local' | 'online';
 export type OnlineRole = 'host' | 'guest';
@@ -13,7 +13,7 @@ export type OnlineConnectionStatus =
   | 'disconnected'
   | 'error';
 export type CpuDifficulty = 'chill' | 'standard' | 'fierce';
-export type ProjectileVisual = 'fireball' | 'windblade' | 'boulder';
+export type ProjectileVisual = 'fireball' | 'windblade' | 'boulder' | 'thunderorb' | 'iceshard';
 
 export type AttackKind =
   | 'jab'

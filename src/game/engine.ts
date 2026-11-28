@@ -945,7 +945,11 @@ export class GameEngine {
               ? '#FB923C'
               : f.spec.id === 'gale'
                 ? '#67E8F9'
-                : '#FACC15';
+                : f.spec.id === 'titan'
+                  ? '#FACC15'
+                  : f.spec.id === 'volt'
+                    ? '#FACC15'
+                    : '#38BDF8';
           this.particles.spawn(
             f.spec.id === 'titan' && kind === 'sideSpecial' ? 'dust' : 'spark',
             f.x + (Math.random() - 0.5) * 26,

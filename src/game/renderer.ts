@@ -423,8 +423,12 @@ function drawFighter(
     drawBlazeSprite(ctx, f, time, stride, idleBob, isHitFlash);
   } else if (f.spec.id === 'gale') {
     drawGaleSprite(ctx, f, time, stride, idleBob, isHitFlash);
-  } else {
+  } else if (f.spec.id === 'titan') {
     drawTitanSprite(ctx, f, time, stride, idleBob, isHitFlash);
+  } else if (f.spec.id === 'volt') {
+    drawVoltSprite(ctx, f, time, stride, idleBob, isHitFlash);
+  } else {
+    drawFrostSprite(ctx, f, time, stride, idleBob, isHitFlash);
   }
 
   // Raised gripping hand toward ledge when hanging
@@ -802,6 +806,252 @@ function drawTitanSprite(
   }
 }
 
+function drawVoltSprite(
+  ctx: CanvasRenderingContext2D,
+  f: FighterRuntime,
+  time: number,
+  stride: number,
+  idleBob: number,
+  flash: boolean
+): void {
+  const mainCol = flash ? '#FFFFFF' : '#8B5CF6';
+  const darkCol = flash ? '#FFFFFF' : '#4C1D95';
+  const sparkCol = flash ? '#FFFFFF' : '#FACC15';
+  const suitCol = flash ? '#FFFFFF' : '#1E1B4B';
+
+  ctx.strokeStyle = '#0F172A';
+  ctx.lineWidth = 2.8;
+
+  // Agile ninja shinobi legs
+  const legF = f.grounded ? stride * 9 : 4;
+  const legB = f.grounded ? -stride * 9 : -4;
+
+  ctx.fillStyle = darkCol;
+  ctx.beginPath();
+  ctx.roundRect(-9 + legB, -24, 8, 24, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.roundRect(1 + legF, -24, 8, 24, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // Yellow conduction bands on shins
+  ctx.fillStyle = sparkCol;
+  ctx.fillRect(-8 + legB, -12, 6, 3);
+  ctx.fillRect(2 + legF, -12, 6, 3);
+
+  // Sleek Ninja Torso & Electric Tunic
+  ctx.fillStyle = suitCol;
+  ctx.beginPath();
+  ctx.roundRect(-12, -50 + idleBob, 24, 28, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Violet ninja vest / sash
+  ctx.fillStyle = mainCol;
+  ctx.beginPath();
+  ctx.moveTo(-11, -50 + idleBob);
+  ctx.lineTo(11, -50 + idleBob);
+  ctx.lineTo(5, -24 + idleBob);
+  ctx.lineTo(-5, -24 + idleBob);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Glowing lightning crest on chest
+  ctx.fillStyle = sparkCol;
+  ctx.beginPath();
+  ctx.moveTo(3, -45 + idleBob);
+  ctx.lineTo(-4, -37 + idleBob);
+  ctx.lineTo(1, -37 + idleBob);
+  ctx.lineTo(-2, -28 + idleBob);
+  ctx.lineTo(5, -35 + idleBob);
+  ctx.lineTo(0, -35 + idleBob);
+  ctx.closePath();
+  ctx.fill();
+
+  // Head: Ninja Hood & Mask
+  const headY = -54 + idleBob;
+  ctx.fillStyle = darkCol;
+  ctx.beginPath();
+  ctx.roundRect(-9, headY - 14, 18, 16, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Headband tails fluttering behind
+  const flutter = Math.sin(time * 12) * 4;
+  ctx.fillStyle = mainCol;
+  ctx.beginPath();
+  ctx.moveTo(-9, headY - 6);
+  ctx.quadraticCurveTo(-18, headY - 10 + flutter, -26, headY - 4 + flutter);
+  ctx.lineTo(-24, headY + flutter);
+  ctx.quadraticCurveTo(-16, headY - 4 + flutter, -9, headY - 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Glowing Electric Eye Visor
+  ctx.fillStyle = sparkCol;
+  ctx.beginPath();
+  ctx.moveTo(-6, headY - 7);
+  ctx.lineTo(8, -6 + headY);
+  ctx.lineTo(6, -3 + headY);
+  ctx.lineTo(-6, -4 + headY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Twin Electric Storm Kunai held ready when not attacking
+  if (!f.attack) {
+    ctx.save();
+    ctx.translate(11, -32 + idleBob);
+    ctx.rotate(0.35 + stride * 0.06);
+    ctx.fillStyle = sparkCol;
+    ctx.strokeStyle = '#0F172A';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(0, -1);
+    ctx.lineTo(14, -8);
+    ctx.lineTo(11, 0);
+    ctx.lineTo(14, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Spark halo
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(6, 0, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawFrostSprite(
+  ctx: CanvasRenderingContext2D,
+  f: FighterRuntime,
+  time: number,
+  stride: number,
+  idleBob: number,
+  flash: boolean
+): void {
+  const coatCol = flash ? '#FFFFFF' : '#06B6D4';
+  const navyCol = flash ? '#FFFFFF' : '#164E63';
+  const iceCol = flash ? '#FFFFFF' : '#E0F2FE';
+  const trimCol = flash ? '#FFFFFF' : '#BAE6FD';
+
+  ctx.strokeStyle = '#0F172A';
+  ctx.lineWidth = 2.8;
+
+  // Glacial Boots / Legs
+  const legF = f.grounded ? stride * 8 : 4;
+  const legB = f.grounded ? -stride * 8 : -4;
+
+  ctx.fillStyle = navyCol;
+  ctx.beginPath();
+  ctx.roundRect(-9 + legB, -24, 8, 24, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.roundRect(1 + legF, -24, 8, 24, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // Silver Ice boot caps
+  ctx.fillStyle = iceCol;
+  ctx.fillRect(-9 + legB, -8, 8, 4);
+  ctx.fillRect(1 + legF, -8, 8, 4);
+
+  // Flowing Glacial Trench Coat
+  const coatWave = Math.sin(time * 6 + f.vx * 0.01) * 3;
+  ctx.fillStyle = coatCol;
+  ctx.beginPath();
+  ctx.moveTo(-12, -49 + idleBob);
+  ctx.lineTo(12, -49 + idleBob);
+  ctx.lineTo(15, -16 + idleBob);
+  ctx.lineTo(-18 + coatWave, -14 + idleBob);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // White Fur / Silver Trim on Coat Hem
+  ctx.fillStyle = iceCol;
+  ctx.beginPath();
+  ctx.moveTo(-19 + coatWave, -14 + idleBob);
+  ctx.lineTo(15, -16 + idleBob);
+  ctx.lineTo(15, -12 + idleBob);
+  ctx.lineTo(-20 + coatWave, -10 + idleBob);
+  ctx.closePath();
+  ctx.fill();
+
+  // Arctic Undersuit & Diamond Brooch
+  ctx.fillStyle = navyCol;
+  ctx.fillRect(-6, -46 + idleBob, 12, 16);
+  ctx.fillStyle = iceCol;
+  ctx.beginPath();
+  ctx.moveTo(0, -44 + idleBob);
+  ctx.lineTo(4, -39 + idleBob);
+  ctx.lineTo(0, -34 + idleBob);
+  ctx.lineTo(-4, -39 + idleBob);
+  ctx.closePath();
+  ctx.fill();
+
+  // Head & Crystalline Frost Crown
+  const headY = -54 + idleBob;
+  ctx.fillStyle = trimCol;
+  ctx.beginPath();
+  ctx.roundRect(-9, headY - 13, 18, 15, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Pointed Ice Crystal Crown / Tiara
+  ctx.fillStyle = iceCol;
+  ctx.strokeStyle = '#0F172A';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-8, headY - 12);
+  ctx.lineTo(-6, headY - 21);
+  ctx.lineTo(-2, headY - 14);
+  ctx.lineTo(0, headY - 23);
+  ctx.lineTo(2, headY - 14);
+  ctx.lineTo(6, headY - 21);
+  ctx.lineTo(8, headY - 12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Glowing Pale Cyan Eyes
+  ctx.fillStyle = '#0891B2';
+  ctx.fillRect(-4, headY - 6, 3, 3);
+  ctx.fillRect(3, headY - 6, 3, 3);
+
+  // Translucent Crystalline Ice Rapier held in duelist stance
+  if (!f.attack) {
+    ctx.save();
+    ctx.translate(10, -33 + idleBob);
+    ctx.rotate(-0.4 + stride * 0.05);
+    ctx.fillStyle = 'rgba(224, 242, 254, 0.85)';
+    ctx.strokeStyle = '#0284C7';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.lineTo(26, -3);
+    ctx.lineTo(30, 0);
+    ctx.lineTo(26, 3);
+    ctx.lineTo(0, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Guard
+    ctx.fillStyle = coatCol;
+    ctx.beginPath();
+    ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawAttackEffects(
   ctx: CanvasRenderingContext2D,
   f: FighterRuntime,
@@ -909,7 +1159,7 @@ function drawAttackEffects(
       ctx.ellipse(cx - 8, cy, atk.spec.rangeX * 0.54, atk.spec.rangeY * 0.42, 0, -0.95, 0.95);
       ctx.stroke();
     }
-  } else {
+  } else if (f.spec.id === 'titan') {
     // Titan Earth / Stone Attack VFX
     if (atk.kind === 'downSpecial') {
       // Quake Slam Jagged Stone Spikes erupting left and right
@@ -949,6 +1199,155 @@ function drawAttackEffects(
       ctx.beginPath();
       ctx.roundRect(cx - atk.spec.rangeX * 0.45, cy - atk.spec.rangeY * 0.4, atk.spec.rangeX * 0.9, atk.spec.rangeY * 0.8, 8);
       ctx.fill();
+      ctx.stroke();
+    }
+  } else if (f.spec.id === 'volt') {
+    // Volt Lightning / Thunder Attack VFX
+    if (atk.kind === 'downSpecial') {
+      // Static Discharge 360-Degree Electric Dome
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 3.5;
+      ctx.fillStyle = 'rgba(139, 92, 246, 0.28)';
+      ctx.beginPath();
+      ctx.arc(0, -34, atk.spec.rangeX * 0.46, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Jagged radiating lightning spokes
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2.2;
+      for (let i = 0; i < 6; i++) {
+        const ang = (i * Math.PI) / 3 + Math.sin(time * 24 + i) * 0.25;
+        const r1 = atk.spec.rangeX * 0.18;
+        const r2 = atk.spec.rangeX * 0.35;
+        const r3 = atk.spec.rangeX * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(ang) * r1, -34 + Math.sin(ang) * r1);
+        ctx.lineTo(Math.cos(ang + 0.15) * r2, -34 + Math.sin(ang + 0.15) * r2);
+        ctx.lineTo(Math.cos(ang) * r3, -34 + Math.sin(ang) * r3);
+        ctx.stroke();
+      }
+    } else if (atk.kind === 'upSpecial') {
+      // Storm Bolt Zigzag Thunder Ascent
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(14, -30);
+      ctx.lineTo(-10, -55);
+      ctx.lineTo(16, -85);
+      ctx.stroke();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(14, -30);
+      ctx.lineTo(-10, -55);
+      ctx.lineTo(16, -85);
+      ctx.stroke();
+    } else if (atk.kind === 'sideSpecial') {
+      // Flash Warp Lightning Streak
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 4;
+      ctx.fillStyle = 'rgba(139, 92, 246, 0.4)';
+      ctx.beginPath();
+      ctx.moveTo(-35, -34);
+      ctx.lineTo(cx, cy - 14);
+      ctx.lineTo(cx + 25, cy);
+      ctx.lineTo(cx, cy + 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // Spark Palm / Volt Kick Lightning Slash Arc
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.ellipse(cx - 6, cy, atk.spec.rangeX * 0.52, atk.spec.rangeY * 0.44, 0, -1.2, 1.2);
+      ctx.stroke();
+      ctx.strokeStyle = '#A855F7';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(cx - 4, cy, atk.spec.rangeX * 0.48, atk.spec.rangeY * 0.4, 0, -1.0, 1.0);
+      ctx.stroke();
+    }
+  } else {
+    // Frost Glacial Ice Attack VFX
+    if (atk.kind === 'downSpecial') {
+      // Blizzard Barrier Rotating Crystal Nova
+      ctx.strokeStyle = '#E0F2FE';
+      ctx.lineWidth = 3;
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.28)';
+      ctx.beginPath();
+      ctx.arc(0, -34, atk.spec.rangeX * 0.46, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Orbiting sharp crystal diamond shards
+      ctx.fillStyle = '#E0F2FE';
+      ctx.strokeStyle = '#0284C7';
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 5; i++) {
+        const ang = time * 7 + (i * Math.PI * 2) / 5;
+        const dist = atk.spec.rangeX * 0.4;
+        const px = Math.cos(ang) * dist;
+        const py = -34 + Math.sin(ang) * dist;
+        ctx.beginPath();
+        ctx.moveTo(px, py - 9);
+        ctx.lineTo(px + 6, py);
+        ctx.lineTo(px, py + 9);
+        ctx.lineTo(px - 6, py);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    } else if (atk.kind === 'upSpecial') {
+      // Permafrost Spire Erupting Glacial Column
+      ctx.fillStyle = '#06B6D4';
+      ctx.strokeStyle = '#E0F2FE';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-16, 0);
+      ctx.lineTo(-12, -50);
+      ctx.lineTo(0, -90); // spire tip
+      ctx.lineTo(12, -50);
+      ctx.lineTo(16, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // Inner glistening diamond core
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.moveTo(-4, -20);
+      ctx.lineTo(0, -82);
+      ctx.lineTo(4, -20);
+      ctx.closePath();
+      ctx.fill();
+    } else if (atk.kind === 'sideSpecial') {
+      // Glacial Slide Ground Ice Sheet
+      ctx.fillStyle = 'rgba(224, 242, 254, 0.6)';
+      ctx.strokeStyle = '#06B6D4';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-28, 0);
+      ctx.lineTo(cx + 20, 0);
+      ctx.lineTo(cx + 10, -18);
+      ctx.lineTo(cx - 15, -4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // Chill Thrust / Glacial Slash Crystalline Arc
+      ctx.strokeStyle = '#06B6D4';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.ellipse(cx - 8, cy, atk.spec.rangeX * 0.54, atk.spec.rangeY * 0.44, 0, -1.15, 1.15);
+      ctx.stroke();
+      ctx.strokeStyle = '#E0F2FE';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.ellipse(cx - 6, cy, atk.spec.rangeX * 0.5, atk.spec.rangeY * 0.4, 0, -0.95, 0.95);
       ctx.stroke();
     }
   }
@@ -992,7 +1391,7 @@ function drawProjectile(ctx: CanvasRenderingContext2D, p: ProjectileRuntime, tim
     ctx.beginPath();
     ctx.arc(0, 0, p.radius * 0.72, 1.8, 4.4);
     ctx.stroke();
-  } else {
+  } else if (p.visual === 'boulder') {
     // Jagged spinning boulder
     ctx.rotate(time * 8 * (p.vx >= 0 ? 1 : -1));
     ctx.fillStyle = '#78350F';
@@ -1013,6 +1412,61 @@ function drawProjectile(ctx: CanvasRenderingContext2D, p: ProjectileRuntime, tim
     ctx.fillStyle = '#F59E0B';
     ctx.beginPath();
     ctx.arc(-3, -3, p.radius * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (p.visual === 'thunderorb') {
+    // Crackling plasma sphere with rotating jagged electric lightning arcs
+    ctx.rotate(time * 14 * (p.vx >= 0 ? 1 : -1));
+    // Outer electric corona
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.45)';
+    ctx.beginPath();
+    ctx.arc(0, 0, p.radius * 1.35, 0, Math.PI * 2);
+    ctx.fill();
+    // Inner vibrant lightning core
+    ctx.fillStyle = '#8B5CF6';
+    ctx.beginPath();
+    ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FACC15';
+    ctx.beginPath();
+    ctx.arc(0, 0, p.radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // Crackling zigzag lightning forks
+    ctx.strokeStyle = '#FEF08A';
+    ctx.lineWidth = 2.5;
+    for (let i = 0; i < 4; i++) {
+      const ang = (i * Math.PI) / 2 + Math.sin(time * 20 + i) * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang) * (p.radius * 0.4), Math.sin(ang) * (p.radius * 0.4));
+      ctx.lineTo(Math.cos(ang + 0.3) * (p.radius * 0.9), Math.sin(ang + 0.3) * (p.radius * 0.9));
+      ctx.lineTo(Math.cos(ang) * (p.radius * 1.4), Math.sin(ang) * (p.radius * 1.4));
+      ctx.stroke();
+    }
+  } else {
+    // 'iceshard' (Frost) - sharp faceted diamond ice crystal
+    const dir = p.vx >= 0 ? 1 : -1;
+    ctx.scale(dir, 1);
+    ctx.rotate((p.vy / (Math.abs(p.vx) + 1)) * 0.5);
+    // Outer faceted crystalline ice shard
+    ctx.fillStyle = '#06B6D4';
+    ctx.strokeStyle = '#E0F2FE';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(p.radius * 1.8, 0); // sharp tip
+    ctx.lineTo(0, -p.radius * 0.7);
+    ctx.lineTo(-p.radius * 1.4, -p.radius * 0.4);
+    ctx.lineTo(-p.radius * 1.1, 0);
+    ctx.lineTo(-p.radius * 1.4, p.radius * 0.4);
+    ctx.lineTo(0, p.radius * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Inner glistening facet
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.moveTo(p.radius * 1.3, 0);
+    ctx.lineTo(0, -p.radius * 0.3);
+    ctx.lineTo(-p.radius * 0.7, 0);
+    ctx.closePath();
     ctx.fill();
   }
 

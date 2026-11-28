@@ -140,14 +140,20 @@ export function TouchControls({
   const onDragMove = (e: React.PointerEvent) => {
     if (!isEditing || dragPointerIdRef.current !== e.pointerId || !dragTargetRef.current) return;
     e.preventDefault();
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
+    const scale = layout.scale || 1.0;
+    const dx = (e.clientX - dragStartRef.current.x) / scale;
+    const dy = (e.clientY - dragStartRef.current.y) / scale;
+    const target = dragTargetRef.current;
+    // The stick uses translate3d (where +y is down), while buttons are positioned using CSS bottom (where +y is up).
+    // Inverting dy for buttons ensures dragging down (positive dy) moves buttons down, and dragging up moves them up.
     const nextOffset = {
       x: dragStartRef.current.startOffsetX + dx,
-      y: dragStartRef.current.startOffsetY + dy,
+      y:
+        target === 'stick'
+          ? dragStartRef.current.startOffsetY + dy
+          : dragStartRef.current.startOffsetY - dy,
     };
     if (onUpdateLayout) {
-      const target = dragTargetRef.current;
       onUpdateLayout({
         ...layout,
         ...(target === 'stick' ? { stickOffset: nextOffset } : {}),
@@ -319,7 +325,7 @@ export function TouchControls({
       <div
         className="absolute pointer-events-auto touch-none"
         style={{
-          left: isLefty ? '16px' : undefined,
+          left: isLefty ? '240px' : undefined,
           right: isLefty ? undefined : '16px',
           bottom: '16px',
           opacity: layout.opacity,

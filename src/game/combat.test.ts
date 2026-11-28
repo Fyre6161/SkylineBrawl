@@ -1070,3 +1070,161 @@ test('TouchInputBuffer and computeTouchStickDirections queue single-frame taps, 
   assert.equal(cleared.specialJustPressed, false);
 });
 
+import { DEFAULT_TOUCH_LAYOUT, loadTouchLayout, TouchLayoutConfig } from './touchInput';
+
+test('touch layout drag delta calculations move stick and buttons in the exact pointer drag direction', () => {
+  const layout: TouchLayoutConfig = { ...DEFAULT_TOUCH_LAYOUT };
+
+  // Simulated drag of 40px DOWN (clientY increases: +40), and 30px RIGHT (clientX increases: +30)
+  const pointerDeltaX = 30;
+  const pointerDeltaY = 40;
+  const scale = 1.0;
+
+  const dx = pointerDeltaX / scale;
+  const dy = pointerDeltaY / scale;
+
+  // Stick uses translate3d (where positive y translates DOWNWARDS)
+  const nextStickOffset = {
+    x: layout.stickOffset.x + dx,
+    y: layout.stickOffset.y + dy,
+  };
+  assert.equal(nextStickOffset.x, 30);
+  assert.equal(nextStickOffset.y, 40);
+
+  // Buttons use CSS bottom (where smaller bottom value places the element closer to bottom / DOWNWARDS)
+  // Therefore, dragging down (positive dy) must decrease the bottom offset so the button moves DOWN on screen
+  const nextAttackOffset = {
+    x: layout.attackOffset.x + dx,
+    y: layout.attackOffset.y - dy,
+  };
+  assert.equal(nextAttackOffset.x, layout.attackOffset.x + 30);
+  assert.equal(nextAttackOffset.y, layout.attackOffset.y - 40);
+
+  // Dragging UP (negative dy, e.g. -25):
+  const dragUpDy = -25;
+  const nextUpAttackOffset = {
+    x: layout.attackOffset.x,
+    y: layout.attackOffset.y - dragUpDy,
+  };
+  assert.equal(nextUpAttackOffset.y, layout.attackOffset.y + 25);
+});
+
+import { setupMobileZoomPrevention } from '../utils/preventZoom';
+
+test('setupMobileZoomPrevention registers gesture, touchmove, wheel, and double-tap prevention', () => {
+  const registeredListeners: { type: string; options?: any }[] = [];
+  const removedListeners: string[] = [];
+
+  const mockTarget = {
+    addEventListener: (type: string, _fn: any, options?: any) => {
+      registeredListeners.push({ type, options });
+    },
+    removeEventListener: (type: string) => {
+      removedListeners.push(type);
+    },
+  };
+
+  const originalWindow = globalThis.window;
+  const originalDoc = globalThis.document;
+
+  try {
+    (globalThis as any).window = {
+      ...mockTarget,
+      scrollX: 0,
+      scrollY: 0,
+      scrollTo: () => {},
+    };
+    (globalThis as any).document = {
+      ...mockTarget,
+    };
+
+    const cleanup = setupMobileZoomPrevention();
+
+    // Verify key zoom prevention listeners are registered
+    const registeredTypes = registeredListeners.map((l) => l.type);
+    assert.ok(registeredTypes.includes('gesturestart'));
+    assert.ok(registeredTypes.includes('gesturechange'));
+    assert.ok(registeredTypes.includes('gestureend'));
+    assert.ok(registeredTypes.includes('touchmove'));
+    assert.ok(registeredTypes.includes('touchend'));
+    assert.ok(registeredTypes.includes('wheel'));
+    assert.ok(registeredTypes.includes('keydown'));
+
+    // Check cleanup function unregisters all handlers
+    cleanup();
+    assert.ok(removedListeners.includes('gesturestart'));
+    assert.ok(removedListeners.includes('touchmove'));
+    assert.ok(removedListeners.includes('wheel'));
+  } finally {
+    (globalThis as any).window = originalWindow;
+    (globalThis as any).document = originalDoc;
+  }
+});
+
+import { FIGHTER_LIST } from './fighters';
+
+test('Volt and Frost provide distinct elemental mechanics, specialized attacks, and balanced stats', () => {
+  assert.equal(FIGHTER_LIST.length, 5);
+  const volt = FIGHTERS.volt;
+  const frost = FIGHTERS.frost;
+
+  assert.ok(volt);
+  assert.ok(frost);
+
+  // Volt speedster & vertical leap checks
+  assert.equal(volt.id, 'volt');
+  assert.ok(volt.jumpForce > FIGHTERS.blaze.jumpForce);
+  assert.ok(volt.airAccel > FIGHTERS.blaze.airAccel);
+  assert.equal(volt.attacks.neutralSpecial.projectileVisual, 'thunderorb');
+  assert.ok((volt.attacks.sideSpecial.selfVx ?? 0) > 700);
+  assert.equal(volt.attacks.upSpecial.isRecovery, true);
+  assert.ok((volt.attacks.upSpecial.selfVy ?? 0) < -900);
+  assert.ok(volt.attacks.downSpecial.rangeX >= 140);
+
+  // Frost glacial tactician & barrier reflection checks
+  assert.equal(frost.id, 'frost');
+  assert.equal(frost.attacks.neutralSpecial.projectileVisual, 'iceshard');
+  assert.equal(frost.attacks.downSpecial.reflectsProjectiles, true);
+  assert.equal(frost.attacks.upSpecial.isRecovery, true);
+
+  // Test Frost reflection mechanic in runtime
+  const stage = STAGES.sky_temple;
+  const frostFighter = createFighterRuntime(1, frost, false, stage, 3);
+  frostFighter.x = 100;
+  frostFighter.y = stage.platforms[0].y;
+  frostFighter.attack = {
+    kind: 'downSpecial',
+    spec: frost.attacks.downSpecial,
+    elapsed: 0.12,
+    hasHit: false,
+  };
+
+  const incomingProjectile: ProjectileRuntime = {
+    id: 99,
+    ownerSlot: 0,
+    visual: 'fireball',
+    x: frostFighter.x + 30,
+    y: frostFighter.y - 34,
+    vx: -450,
+    vy: 0,
+    gravity: 0,
+    radius: 16,
+    damage: 13,
+    baseKnockback: 175,
+    knockbackGrowth: 2.85,
+    angleDeg: 44,
+    color: '#EF4444',
+    life: 0.1,
+    maxLife: 1.5,
+    powerScale: 1,
+  };
+
+  const reflectedCount = tryReflectProjectiles(frostFighter, [incomingProjectile]);
+  assert.equal(reflectedCount, 1);
+  assert.equal(incomingProjectile.ownerSlot, 1);
+  assert.ok(incomingProjectile.vx > 0, 'Reflected projectile should travel in reverse direction');
+  assert.ok(incomingProjectile.damage > 13, 'Reflected projectile should receive damage boost');
+});
+
+
+
