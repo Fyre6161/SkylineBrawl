@@ -21,12 +21,21 @@ import {
   stepStageRuntime,
 } from './hazards';
 import {
+  createEmptyGamepadEdgeState,
+  createEmptyInput,
+  GamepadEdgeState,
+  getConnectedGamepads,
+  mapGamepadToInput,
+  mergeFighterInputs,
+} from './gamepad';
+import {
   cloneHotkeySettings,
   createDefaultHotkeys,
   HotkeySettings,
   isHotkeyBound,
   readInputFromBindings,
 } from './hotkeys';
+import { TouchInputBuffer } from './touchInput';
 import {
   applyFighterState,
   deserializeProjectiles,
@@ -95,6 +104,16 @@ export class GameEngine {
   private keysHeld = new Set<string>();
   private keysJustPressed = new Set<string>();
   private hotkeys: HotkeySettings = createDefaultHotkeys();
+  public readonly touchInput = new TouchInputBuffer();
+  private touchFrameInput: FighterInputState = { ...EMPTY_INPUT };
+  private gamepadEdges: [GamepadEdgeState, GamepadEdgeState] = [
+    createEmptyGamepadEdgeState(),
+    createEmptyGamepadEdgeState(),
+  ];
+  private gamepadFrameInputs: [FighterInputState, FighterInputState] = [
+    { ...EMPTY_INPUT },
+    { ...EMPTY_INPUT },
+  ];
 
   private rafId = 0;
   private paceTimerId = 0;
@@ -278,6 +297,14 @@ export class GameEngine {
   public clearInputs(): void {
     this.keysHeld.clear();
     this.keysJustPressed.clear();
+    this.touchInput.clear();
+    this.touchFrameInput = createEmptyInput();
+    this.gamepadFrameInputs = [createEmptyInput(), createEmptyInput()];
+    const pads = getConnectedGamepads();
+    this.gamepadEdges = [
+      { ...createEmptyGamepadEdgeState(), pause: Boolean(pads[0]?.buttons[9]?.pressed) },
+      { ...createEmptyGamepadEdgeState(), pause: Boolean(pads[1]?.buttons[9]?.pressed) },
+    ];
   }
 
   public setHotkeys(next: HotkeySettings): void {
@@ -525,38 +552,72 @@ export class GameEngine {
     }
   }
 
+  private pollExternalInputs(): boolean {
+    this.touchFrameInput = this.touchInput.consumeFrameInput();
+    const pads = getConnectedGamepads();
+    let pauseRequested = false;
+
+    if (this.config.mode === 'local') {
+      const p1Tap = this.hotkeys.localP1TapJump;
+      const p2Tap = this.hotkeys.localP2TapJump;
+      const r0 = mapGamepadToInput(pads[0], this.gamepadEdges[0], p1Tap);
+      const r1 = mapGamepadToInput(pads[1], this.gamepadEdges[1], p2Tap);
+      this.gamepadEdges[0] = r0.nextEdge;
+      this.gamepadEdges[1] = r1.nextEdge;
+      this.gamepadFrameInputs = [r0.input, r1.input];
+      pauseRequested = r0.pauseJustPressed || r1.pauseJustPressed;
+    } else {
+      const r0 = mapGamepadToInput(pads[0], this.gamepadEdges[0], this.hotkeys.singleTapJump);
+      this.gamepadEdges[0] = r0.nextEdge;
+      this.gamepadEdges[1] = createEmptyGamepadEdgeState();
+      this.gamepadFrameInputs = [r0.input, createEmptyInput()];
+      pauseRequested = r0.pauseJustPressed;
+    }
+
+    return pauseRequested;
+  }
+
   private readPlayerInput(slot: 0 | 1): FighterInputState {
     if (this.screenState === 'paused') {
       return { ...EMPTY_INPUT };
     }
 
     if (this.config.mode === 'cpu' || this.config.mode === 'online') {
-      return readInputFromBindings(
+      const kb = readInputFromBindings(
         this.keysHeld,
         this.keysJustPressed,
         this.hotkeys.singlePrimary,
         this.hotkeys.singleSecondary,
         this.hotkeys.singleTapJump
       );
+      return mergeFighterInputs(
+        mergeFighterInputs(kb, this.gamepadFrameInputs[0]),
+        this.touchFrameInput
+      );
     }
 
     if (slot === 0) {
-      return readInputFromBindings(
+      const kb1 = readInputFromBindings(
         this.keysHeld,
         this.keysJustPressed,
         this.hotkeys.localP1,
         undefined,
         this.hotkeys.localP1TapJump
       );
+      return mergeFighterInputs(
+        mergeFighterInputs(kb1, this.gamepadFrameInputs[0]),
+        this.touchFrameInput
+      );
     }
 
-    return readInputFromBindings(
+    const kb2 = readInputFromBindings(
       this.keysHeld,
       this.keysJustPressed,
       this.hotkeys.localP2,
       undefined,
       this.hotkeys.localP2TapJump
     );
+    return mergeFighterInputs(kb2, this.gamepadFrameInputs[1]);
   }
 
   private scheduleNextFrame(renderMs: number): void {
@@ -583,7 +644,10 @@ export class GameEngine {
 
     this.worldTime += dt;
 
-    if (this.screenState === 'title') {
+    const gamepadPaused = this.pollExternalInputs();
+    if (gamepadPaused && this.screenState === 'playing') {
+      this.callbacks.onScreenStateRequest?.('paused');
+    } else if (this.screenState === 'title') {
       this.stepTitlePreview(dt);
     } else if (
       this.screenState === 'playing' ||

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameHud } from './components/GameHud';
 import { DisconnectModal, GameOverModal, PauseModal } from './components/StatusModal';
 import { MenuView, OnlineLobbyState, OnlineTab, TitleScreen } from './components/TitleScreen';
+import { TouchControls } from './components/TouchControls';
 import { GameEngine } from './game/engine';
+import { getConnectedGamepads } from './game/gamepad';
 import {
   formatControlSummary,
   HotkeySettings,
@@ -17,6 +19,12 @@ import {
 } from './game/matchmaking';
 import { NetMessage, normalizeRoomCode, parseRoomFromSearch } from './game/netcode';
 import { P2PTransport } from './game/p2p';
+import {
+  detectTouchCapability,
+  loadTouchControlMode,
+  saveTouchControlMode,
+  TouchControlMode,
+} from './game/touchInput';
 import {
   FighterId,
   GameScreenState,
@@ -84,6 +92,7 @@ const INITIAL_HUD: MatchHudSnapshot = {
 export default function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
+  const [engineInstance, setEngineInstance] = useState<GameEngine | null>(null);
   const p2pRef = useRef<P2PTransport | null>(null);
 
   const initialInviteRoom = useRef<string | null>(
@@ -95,6 +104,10 @@ export default function App() {
 
   const [hotkeys, setHotkeys] = useState<HotkeySettings>(() => loadHotkeySettings());
   const hotkeysRef = useRef<HotkeySettings>(hotkeys);
+
+  const [touchMode, setTouchMode] = useState<TouchControlMode>(() => loadTouchControlMode());
+  const [touchDetected, setTouchDetected] = useState<boolean>(() => detectTouchCapability());
+  const [gamepadCount, setGamepadCount] = useState<number>(() => getConnectedGamepads().length);
 
   const [screenState, setScreenState] = useState<GameScreenState>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -213,6 +226,7 @@ export default function App() {
     });
     engine.setHotkeys(hotkeysRef.current);
     engineRef.current = engine;
+    setEngineInstance(engine);
 
     const sendLobbySnapshot = (curConfig: MatchConfig, guestReady: boolean) => {
       p2pRef.current?.send({
@@ -441,6 +455,7 @@ export default function App() {
       p2pRef.current = null;
       engine.destroy();
       engineRef.current = null;
+      setEngineInstance(null);
     };
   }, [clearQuickTimers, launchHostOnlineMatch, updateOnlineState]);
 
@@ -470,6 +485,11 @@ export default function App() {
     setHotkeys(next);
     saveHotkeySettings(next);
     engineRef.current?.setHotkeys(next);
+  }, []);
+
+  const handleChangeTouchMode = useCallback((next: TouchControlMode) => {
+    setTouchMode(next);
+    saveTouchControlMode(next);
   }, []);
 
   const handleStartMatch = useCallback((overrideConfig?: MatchConfig) => {
@@ -787,7 +807,52 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleResume, handleRestart]);
 
+  // Detect touch pointer interaction & connected gamepads dynamically
+  useEffect(() => {
+    const syncGamepads = () => {
+      setGamepadCount(getConnectedGamepads().length);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') {
+        setTouchDetected(true);
+      }
+    };
+    syncGamepads();
+    window.addEventListener('gamepadconnected', syncGamepads);
+    window.addEventListener('gamepaddisconnected', syncGamepads);
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    return () => {
+      window.removeEventListener('gamepadconnected', syncGamepads);
+      window.removeEventListener('gamepaddisconnected', syncGamepads);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, []);
+
+  // Poll Gamepad Start (button 9) to resume from pause when offline loop is frozen
+  useEffect(() => {
+    if (screenState !== 'paused') return;
+    const initPads = getConnectedGamepads();
+    let prevStartPressed = initPads.some((p) => Boolean(p.buttons[9]?.pressed));
+    const timer = window.setInterval(() => {
+      const pads = getConnectedGamepads();
+      const startPressed = pads.some((p) => Boolean(p.buttons[9]?.pressed));
+      if (startPressed && !prevStartPressed) {
+        handleResume();
+      }
+      prevStartPressed = startPressed;
+    }, 60);
+    return () => window.clearInterval(timer);
+  }, [screenState, handleResume]);
+
   const isOnlineMatch = config.mode === 'online';
+  const showTouchControls = touchMode === 'on' || (touchMode === 'auto' && touchDetected);
+
+  const pauseControlSummary =
+    showTouchControls && gamepadCount === 0
+      ? 'Touch Pad: Left Stick Move · ATK Attack · SPC Special · JMP Jump · SHD Shield'
+      : gamepadCount > 0
+        ? 'Gamepad: Stick/D-Pad Move · A Attack · B Special · X/Y/LB Jump · RB/Triggers Shield · Start Pause'
+        : formatControlSummary(hotkeys, config.mode);
 
   return (
     <main className="relative w-full h-full overflow-hidden bg-slate-950">
@@ -798,6 +863,9 @@ export default function App() {
         <TitleScreen
           config={config}
           hotkeys={hotkeys}
+          touchMode={touchMode}
+          showTouchControls={showTouchControls}
+          gamepadCount={gamepadCount}
           menuView={menuView}
           onlineTab={onlineTab}
           joinCode={joinCode}
@@ -810,6 +878,7 @@ export default function App() {
           onChangeJoinCode={setJoinCode}
           onChangeConfig={handleChangeConfig}
           onChangeHotkeys={handleChangeHotkeys}
+          onChangeTouchMode={handleChangeTouchMode}
           onChangeQuickFighter={handleChangeQuickFighter}
           onStartMatch={handleStartMatch}
           onQuickPlayOnline={handleQuickPlayOnline}
@@ -828,16 +897,24 @@ export default function App() {
           hud={hud}
           muted={muted}
           isOnline={isOnlineMatch}
+          touchActive={showTouchControls}
           onToggleMute={handleToggleMute}
           onPause={() => setScreenState('paused')}
           onRestart={handleRestart}
         />
       )}
 
+      {screenState === 'playing' && showTouchControls && engineInstance && (
+        <TouchControls
+          touchInput={engineInstance.touchInput}
+          onUnlockAudio={() => engineInstance.audio.unlock()}
+        />
+      )}
+
       {screenState === 'paused' && !disconnectNotice && (
         <PauseModal
           isOnline={isOnlineMatch}
-          controlSummary={formatControlSummary(hotkeys, config.mode)}
+          controlSummary={pauseControlSummary}
           onResume={handleResume}
           onRestart={handleRestart}
           onReturnTitle={handleReturnTitle}

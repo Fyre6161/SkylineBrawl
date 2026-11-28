@@ -923,3 +923,150 @@ test('matchmaking tie-breaker, packet parsing, and pairing state machine avoid d
     }
   }
 });
+
+test('Blaze and Gale are balanced around distinct bruiser vs glass-cannon speedster trade-offs', () => {
+  const blaze = FIGHTERS.blaze;
+  const gale = FIGHTERS.gale;
+  const titan = FIGHTERS.titan;
+
+  // Survivability & mobility trade-offs
+  assert.ok(gale.weight < blaze.weight && blaze.weight < titan.weight);
+  assert.ok(gale.maxSpeed > blaze.maxSpeed && blaze.maxSpeed > titan.maxSpeed);
+  assert.ok(gale.airAccel > blaze.airAccel);
+  assert.ok(blaze.groundAccel > gale.groundAccel);
+
+  // Blaze wins close boxing speed & heavy knockback/damage; Gale wins disjoint reach & projectile speed
+  assert.ok(blaze.attacks.jab.windup < gale.attacks.jab.windup);
+  assert.ok(gale.attacks.sideTilt.rangeX > blaze.attacks.sideTilt.rangeX);
+  assert.ok(blaze.attacks.sideTilt.damage > gale.attacks.sideTilt.damage);
+  assert.ok(blaze.attacks.downSpecial.knockbackGrowth > gale.attacks.downSpecial.knockbackGrowth + 1.5);
+
+  // Projectiles have distinct trajectories and roles (arcing heavy fireball vs flat fast windblade)
+  assert.ok((blaze.attacks.neutralSpecial.projectileGravity ?? 0) > 0);
+  assert.equal(gale.attacks.neutralSpecial.projectileGravity ?? 0, 0);
+  assert.ok(
+    (gale.attacks.neutralSpecial.projectileSpeed ?? 0) >
+      (blaze.attacks.neutralSpecial.projectileSpeed ?? 0)
+  );
+  assert.ok(blaze.attacks.neutralSpecial.damage > gale.attacks.neutralSpecial.damage);
+
+  // At equal 110% damage, Blaze's Flare Kick hits significantly harder than Gale's Crescent Sweep,
+  // and Gale is launched noticeably further than Blaze from an identical hit
+  const blazeHitKb = calculateKnockback(
+    110,
+    1.0,
+    blaze.attacks.sideTilt.baseKnockback,
+    blaze.attacks.sideTilt.knockbackGrowth
+  );
+  const galeHitKb = calculateKnockback(
+    110,
+    1.0,
+    gale.attacks.sideTilt.baseKnockback,
+    gale.attacks.sideTilt.knockbackGrowth
+  );
+  assert.ok(blazeHitKb > galeHitKb * 1.15);
+
+  const launchOnGale = calculateKnockback(110, gale.weight, 210, 4.0);
+  const launchOnBlaze = calculateKnockback(110, blaze.weight, 210, 4.0);
+  assert.ok(launchOnGale > launchOnBlaze * 1.2);
+});
+
+import {
+  createEmptyGamepadEdgeState,
+  mapGamepadToInput,
+  mergeFighterInputs,
+} from './gamepad';
+import { computeTouchStickDirections, TouchInputBuffer } from './touchInput';
+
+test('mapGamepadToInput handles analog deadzones, D-pad, action edge-triggers, tapJump, and Start pause', () => {
+  const buttons = (pressedIndices: number[]) =>
+    Array.from({ length: 16 }, (_, idx) => ({ pressed: pressedIndices.includes(idx) }));
+
+  // Frame 1: Slight stick noise inside deadzone should not trigger movement; A(0) + Start(9) trigger justPressed once
+  const f1 = mapGamepadToInput(
+    { axes: [0.18, -0.22], buttons: buttons([0, 9]) },
+    createEmptyGamepadEdgeState(),
+    false
+  );
+  assert.equal(f1.input.left, false);
+  assert.equal(f1.input.right, false);
+  assert.equal(f1.input.up, false);
+  assert.equal(f1.input.attackJustPressed, true);
+  assert.equal(f1.pauseJustPressed, true);
+
+  // Frame 2: Holding A(0) and Start(9) does not re-fire edges, while D-pad Left(14) + B(1) + LT(6) fire cleanly
+  const f2 = mapGamepadToInput(
+    { axes: [0, 0], buttons: buttons([0, 1, 6, 9, 14]) },
+    f1.nextEdge,
+    false
+  );
+  assert.equal(f2.input.attackJustPressed, false);
+  assert.equal(f2.pauseJustPressed, false);
+  assert.equal(f2.input.left, true);
+  assert.equal(f2.input.specialJustPressed, true);
+  assert.equal(f2.input.shieldHeld, true);
+  assert.equal(f2.input.dodgeJustPressed, true);
+
+  // Tap Jump ON converts analog Up (< -0.42) into jumpJustPressed & jumpHeld
+  const f3 = mapGamepadToInput(
+    { axes: [0, -0.8], buttons: buttons([]) },
+    createEmptyGamepadEdgeState(),
+    true
+  );
+  assert.equal(f3.input.up, true);
+  assert.equal(f3.input.jumpJustPressed, true);
+  assert.equal(f3.input.jumpHeld, true);
+
+  // mergeFighterInputs combines keyboard and controller cleanly
+  const merged = mergeFighterInputs(f1.input, f2.input);
+  assert.equal(merged.attackJustPressed, true);
+  assert.equal(merged.specialJustPressed, true);
+  assert.equal(merged.left, true);
+  assert.equal(merged.shieldHeld, true);
+});
+
+test('TouchInputBuffer and computeTouchStickDirections queue single-frame taps, clamp radius, and clear cleanly', () => {
+  // Clamp stick vector to maxRadius = 40 and detect horizontal/vertical directions outside deadzone
+  const stick = computeTouchStickDirections(60, -30, 40, 13, 19);
+  assert.equal(stick.right, true);
+  assert.equal(stick.up, true);
+  assert.equal(stick.left, false);
+  assert.equal(stick.down, false);
+  assert.ok(Math.abs(Math.hypot(stick.clampedX, stick.clampedY) - 40) < 0.01);
+
+  const buf = new TouchInputBuffer();
+  buf.setStick(false, true, false, false);
+  buf.pressAction('jump');
+  buf.pressAction('attack');
+  buf.pressAction('shield');
+
+  const frame1 = buf.consumeFrameInput();
+  assert.equal(frame1.right, true);
+  assert.equal(frame1.jumpJustPressed, true);
+  assert.equal(frame1.jumpHeld, true);
+  assert.equal(frame1.attackJustPressed, true);
+  assert.equal(frame1.shieldHeld, true);
+  assert.equal(frame1.dodgeJustPressed, true);
+
+  // Second frame still holds stick, jumpHeld, shieldHeld, but edge taps do not refire
+  const frame2 = buf.consumeFrameInput();
+  assert.equal(frame2.right, true);
+  assert.equal(frame2.jumpJustPressed, false);
+  assert.equal(frame2.jumpHeld, true);
+  assert.equal(frame2.attackJustPressed, false);
+  assert.equal(frame2.dodgeJustPressed, false);
+  assert.equal(frame2.shieldHeld, true);
+
+  buf.releaseAction('jump');
+  buf.releaseAction('shield');
+  const frame3 = buf.consumeFrameInput();
+  assert.equal(frame3.jumpHeld, false);
+  assert.equal(frame3.shieldHeld, false);
+
+  buf.pressAction('special');
+  buf.clear();
+  const cleared = buf.consumeFrameInput();
+  assert.equal(cleared.right, false);
+  assert.equal(cleared.specialJustPressed, false);
+});
+

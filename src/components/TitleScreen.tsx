@@ -12,6 +12,7 @@ import {
 import { QuickMatchStatus } from '../game/matchmaking';
 import { buildRoomInviteUrl, isValidRoomCode, normalizeRoomCode } from '../game/netcode';
 import { STAGE_LIST, STAGES } from '../game/stages';
+import { TouchControlMode } from '../game/touchInput';
 import {
   CpuDifficulty,
   FighterId,
@@ -40,6 +41,9 @@ export interface OnlineLobbyState {
 interface TitleScreenProps {
   config: MatchConfig;
   hotkeys: HotkeySettings;
+  touchMode: TouchControlMode;
+  showTouchControls: boolean;
+  gamepadCount: number;
   menuView: MenuView;
   onlineTab: OnlineTab;
   joinCode: string;
@@ -52,6 +56,7 @@ interface TitleScreenProps {
   onChangeJoinCode: (code: string) => void;
   onChangeConfig: (next: MatchConfig) => void;
   onChangeHotkeys: (next: HotkeySettings) => void;
+  onChangeTouchMode: (mode: TouchControlMode) => void;
   onChangeQuickFighter: (fighter: FighterId) => void;
   onStartMatch: (overrideConfig?: MatchConfig) => void;
   onQuickPlayOnline: () => void;
@@ -116,6 +121,9 @@ function getStatusText(
 export function TitleScreen({
   config,
   hotkeys,
+  touchMode,
+  showTouchControls,
+  gamepadCount,
   menuView,
   onlineTab,
   joinCode,
@@ -128,6 +136,7 @@ export function TitleScreen({
   onChangeJoinCode,
   onChangeConfig,
   onChangeHotkeys,
+  onChangeTouchMode,
   onChangeQuickFighter,
   onStartMatch,
   onQuickPlayOnline,
@@ -240,12 +249,12 @@ export function TitleScreen({
     listeningTarget.action === target.action;
 
   return (
-    <div className="fixed inset-0 z-10 flex flex-col justify-between p-6 sm:p-8 pointer-events-none">
+    <div className="fixed inset-0 z-10 flex flex-col justify-between p-4 sm:p-8 pointer-events-none">
       {menuView === 'main' && (
-        <div className="flex flex-col items-center text-center gap-4 pt-2 sm:pt-4">
+        <div className="flex flex-col items-center text-center gap-3 sm:gap-4 pt-1 sm:pt-4">
           <svg
             viewBox="0 0 460 112"
-            className="w-[300px] sm:w-[400px] h-auto drop-shadow-[0_6px_18px_rgba(0,0,0,0.65)]"
+            className="w-[250px] sm:w-[400px] h-auto drop-shadow-[0_6px_18px_rgba(0,0,0,0.65)]"
             role="img"
             aria-label="Skyline Brawl"
           >
@@ -358,10 +367,10 @@ export function TitleScreen({
       {menuView === 'setup' && (
         <section
           aria-label="Match setup"
-          className="pointer-events-auto mx-auto my-auto w-full max-w-[470px] max-h-[calc(100vh-88px)] overflow-y-auto rounded-xl bg-slate-950/94 border border-slate-700/85 p-5 shadow-2xl flex flex-col gap-3.5"
+          className="pointer-events-auto mx-auto my-auto w-full max-w-[470px] max-h-[calc(100dvh-72px)] overflow-y-auto rounded-xl bg-slate-950/94 border border-slate-700/85 p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5"
         >
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-2xl font-extrabold uppercase tracking-wide text-white">
+            <h2 className="font-display text-xl sm:text-2xl font-extrabold uppercase tracking-wide text-white whitespace-nowrap">
               Match Setup
             </h2>
 
@@ -788,6 +797,44 @@ export function TitleScreen({
                   </div>
                 </>
               )}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                <span className="text-xs font-medium text-slate-300">
+                  On-Screen Touch Pad
+                </span>
+                <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800">
+                  {([
+                    ['auto', 'Auto'],
+                    ['on', 'Always On'],
+                    ['off', 'Off'],
+                  ] as [TouchControlMode, string][]).map(([modeVal, label]) => (
+                    <button
+                      key={`touch-mode-${modeVal}`}
+                      type="button"
+                      aria-pressed={touchMode === modeVal}
+                      onClick={() => onChangeTouchMode(modeVal)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                        touchMode === modeVal
+                          ? 'bg-emerald-600 text-white'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-slate-900/75 border border-slate-800 px-2.5 py-2 flex flex-col gap-1">
+                <div className="flex items-center justify-between text-[11px] font-semibold">
+                  <span className="text-slate-300 uppercase tracking-wider">Gamepad Support</span>
+                  <span className={gamepadCount > 0 ? 'text-emerald-400' : 'text-slate-400'}>
+                    {gamepadCount > 0 ? `${gamepadCount} Connected` : 'Plug & Play'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Stick / D-Pad Move · A Attack · B Special · X/Y/LB Jump · RB/Triggers Shield · Start Pause
+                </p>
+              </div>
             </div>
           )}
         </section>
@@ -796,7 +843,7 @@ export function TitleScreen({
       {menuView === 'online' && (
         <section
           aria-label="Online 1v1 Lobby"
-          className="pointer-events-auto mx-auto my-auto w-full max-w-[460px] rounded-xl bg-slate-950/95 border border-slate-700/85 p-5 shadow-2xl flex flex-col gap-4"
+          className="pointer-events-auto mx-auto my-auto w-full max-w-[460px] max-h-[calc(100dvh-72px)] overflow-y-auto rounded-xl bg-slate-950/95 border border-slate-700/85 p-4 sm:p-5 shadow-2xl flex flex-col gap-4"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -1230,9 +1277,17 @@ export function TitleScreen({
         </section>
       )}
 
-      {/* Bottom Safe Margin: Single flat control hint */}
+      {/* Bottom Safe Margin: Adaptive control hint */}
       <div className="w-full text-center text-xs sm:text-sm text-slate-300/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)]">
-        <span>{formatControlSummary(hotkeys, activeSummaryMode)}</span>
+        {showTouchControls && gamepadCount === 0 ? (
+          <span>Touch Pad: Left Stick Move · ATK Attack · SPC Special · JMP Jump · SHD Shield</span>
+        ) : gamepadCount > 0 ? (
+          <span>
+            Gamepad{gamepadCount > 1 ? ` (${gamepadCount})` : ''}: Stick/D-Pad Move · A Attack · B Special · X/Y/LB Jump · RB Shield · Start Pause
+          </span>
+        ) : (
+          <span>{formatControlSummary(hotkeys, activeSummaryMode)}</span>
+        )}
       </div>
     </div>
   );
